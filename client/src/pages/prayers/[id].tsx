@@ -1,16 +1,14 @@
 import Link from "next/link";
 import type { GetServerSideProps } from "next";
-import { MessageCircle } from "lucide-react";
 import { getServerSession } from "next-auth/next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getPostById, listCommentsByPostId } from "@/features/posts/server";
-import type { CommentItem, PostDetail } from "@/features/posts/types";
+import { getPostById } from "@/features/posts/server";
+import type { PostDetail } from "@/features/posts/types";
 import { authOptions } from "@/lib/auth/options";
 
 interface PrayerDetailPageProps {
   post: PostDetail | null;
-  comments: CommentItem[];
   error?: string;
 }
 
@@ -29,7 +27,7 @@ function formatFullDate(value: string) {
   return `${yyyy}.${mm}.${dd} ${hh}:${mi}`;
 }
 
-export default function PrayerDetailPage({ post, comments, error }: PrayerDetailPageProps) {
+export default function PrayerDetailPage({ post, error }: PrayerDetailPageProps) {
   if (error) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-6">
@@ -104,18 +102,15 @@ export default function PrayerDetailPage({ post, comments, error }: PrayerDetail
 export const getServerSideProps: GetServerSideProps<PrayerDetailPageProps> = async (context) => {
   const postId = context.params?.id;
   if (typeof postId !== "string") {
-    return { props: { post: null, comments: [], error: "잘못된 요청입니다." } };
+    return { props: { post: null, error: "잘못된 요청입니다." } };
   }
 
   try {
     const session = await getServerSession(context.req, context.res, authOptions);
-    const [post, comments] = await Promise.all([
-      getPostById(postId, session?.user?.id ?? null),
-      listCommentsByPostId(postId),
-    ]);
-    return { props: { post, comments } };
+    const post = await getPostById(postId, session?.user?.id ?? null);
+    return { props: { post } };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return { props: { post: null, comments: [], error: message } };
+    return { props: { post: null, error: message } };
   }
 };
