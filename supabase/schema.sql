@@ -122,6 +122,7 @@ create table if not exists public.posts (
   pinned_at timestamptz,
 
   comment_count integer not null default 0,
+  amen_count integer not null default 0,
   view_count integer not null default 0,
 
   deleted_at timestamptz,
@@ -163,6 +164,17 @@ begin
   if not exists (
     select 1
     from pg_constraint
+    where conname = 'chk_posts_amen_count_non_negative'
+      and conrelid = 'public.posts'::regclass
+  ) then
+    alter table public.posts
+      add constraint chk_posts_amen_count_non_negative
+      check (amen_count >= 0);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
     where conname = 'chk_posts_pinned_at_consistency'
       and conrelid = 'public.posts'::regclass
   ) then
@@ -195,6 +207,57 @@ create index if not exists idx_posts_author_visible_created
 create index if not exists idx_posts_board_pinned_only
   on public.posts (board_id, pinned_at desc, created_at desc)
   where deleted_at is null and is_pinned = true;
+
+create index if not exists idx_posts_board_amen_created
+  on public.posts (board_id, amen_count desc, created_at desc)
+  where deleted_at is null;
+
+-- =========================================================
+-- Post Amens (Like)
+-- =========================================================
+create table if not exists public.post_amens (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+
+create index if not exists idx_post_amens_user_created
+  on public.post_amens (user_id, created_at desc);
+
+-- post amen_count sync triggers
+create or replace function public.sync_post_amen_count()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.posts
+    set amen_count = amen_count + 1
+    where id = new.post_id;
+    return new;
+  end if;
+
+  if tg_op = 'DELETE' then
+    update public.posts
+    set amen_count = greatest(amen_count - 1, 0)
+    where id = old.post_id;
+    return old;
+  end if;
+
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_post_amens_count_insert on public.post_amens;
+create trigger trg_post_amens_count_insert
+after insert on public.post_amens
+for each row execute function public.sync_post_amen_count();
+
+drop trigger if exists trg_post_amens_count_delete on public.post_amens;
+create trigger trg_post_amens_count_delete
+after delete on public.post_amens
+for each row execute function public.sync_post_amen_count();
 
 -- =========================================================
 -- Comments
@@ -361,6 +424,7 @@ alter table public.users enable row level security;
 alter table public.boards enable row level security;
 alter table public.posts enable row level security;
 alter table public.comments enable row level security;
+alter table public.post_amens enable row level security;
 
 -- users: client direct read 차단
 drop policy if exists users_public_read on public.users;
@@ -404,6 +468,21 @@ using (
   )
 );
 
+drop policy if exists post_amens_public_read on public.post_amens;
+create policy post_amens_public_read
+on public.post_amens
+for select
+using (
+  exists (
+    select 1
+    from public.posts p
+    join public.boards b on b.id = p.board_id
+    where p.id = post_id
+      and p.deleted_at is null
+      and b.is_active = true
+  )
+);
+
 -- =========================================================
 -- Comments / documentation
 -- =========================================================
@@ -411,6 +490,7 @@ comment on table public.users is '카카오 로그인 기반 사용자 테이블
 comment on table public.boards is '게시판 마스터 테이블. prayer/sermon 등 확장 가능';
 comment on table public.posts is '게시글 테이블';
 comment on table public.comments is '댓글 및 대댓글 테이블';
+comment on table public.post_amens is '게시글 아멘(좋아요) 이력';
 
 comment on column public.users.email is '카카오 로그인 시 이메일 기준 계정 식별용';
 comment on column public.posts.is_anonymous is 'true면 UI에 작성자명을 익명으로 노출';
@@ -418,4 +498,5 @@ comment on column public.comments.is_anonymous is 'true면 UI에 작성자명을
 comment on column public.posts.is_pinned is '관리자 고정글 여부';
 comment on column public.posts.pinned_at is '고정글 정렬용 시간';
 comment on column public.posts.comment_count is '목록 조회 성능을 위한 캐시 컬럼';
+comment on column public.posts.amen_count is '아멘(좋아요) 수 캐시 컬럼';
 comment on column public.posts.view_count is '게시글 조회수';

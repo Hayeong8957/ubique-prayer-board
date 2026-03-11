@@ -1,26 +1,71 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: var(--ubique-bg);
+  --foreground: var(--ubique-text-main);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--ubique-primary);
+  --color-secondary: var(--ubique-secondary);
+  --color-success: var(--ubique-success);
+  --color-surface: var(--ubique-surface);
+  --color-textMain: var(--ubique-text-main);
+  --color-textSub: var(--ubique-text-sub);
   --font-sans: "Noto Sans KR", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-mono: "Menlo", "Monaco", "Consolas", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --radius-toss: var(--ubique-radius);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  line-height: 1.55;
+  min-height: 100dvh;
+}
+
+/* Mobile/PWA safe area */
+#__next {
+  min-height: 100dvh;
+  padding-top: var(--ubique-safe-top);
+  padding-right: var(--ubique-safe-right);
+  padding-bottom: var(--ubique-safe-bottom);
+  padding-left: var(--ubique-safe-left);
+}
+
+input,
+textarea,
+select {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--ubique-primary);
+  box-shadow: 0 0 0 3px rgb(49 130 246 / 15%);
+}
+
+/* Transparent scroll track for feed areas */
+.transparent-scroll {
+  scrollbar-color: rgb(139 149 161 / 45%) transparent;
+  scrollbar-gutter: stable;
+}
+
+.transparent-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.transparent-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.transparent-scroll::-webkit-scrollbar-thumb {
+  background: rgb(139 149 161 / 35%);
+  border-radius: 9999px;
 }
