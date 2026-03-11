@@ -105,6 +105,9 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = typeof token.uid === "string" ? token.uid : "";
+        if (!session.user.image && typeof token.picture === "string") {
+          session.user.image = token.picture;
+        }
       }
       return session;
     },

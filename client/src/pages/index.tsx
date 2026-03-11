@@ -1,4 +1,4 @@
-import { MessageCircle, User } from "lucide-react";
+import { User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
@@ -64,7 +64,7 @@ function displayAuthor(post: PostListItem) {
 
 export default function Home() {
   const router = useRouter();
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   const [selectedBoard, setSelectedBoard] = useState<BoardCode>("prayer");
   const [feedByBoard, setFeedByBoard] = useState<Record<BoardCode, FeedState>>({
     prayer: createInitialFeedState(),
@@ -235,11 +235,20 @@ export default function Home() {
               <div className="relative" ref={profileMenuRef}>
                 <button
                   type="button"
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-surface bg-white text-textSub"
+                  className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-surface bg-white text-textSub"
                   aria-label="프로필"
                   onClick={() => setIsProfileMenuOpen((prev) => !prev)}
                 >
-                  <User className="h-5 w-5" />
+                  {session?.user?.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={session.user.image}
+                      alt="프로필 이미지"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
                 </button>
 
                 {isProfileMenuOpen ? (
@@ -282,14 +291,14 @@ export default function Home() {
                 key={tab.code}
                 type="button"
                 onClick={() => setSelectedBoard(tab.code)}
-                className={`h-9 rounded-xl px-4 text-sm font-semibold transition ${
-                  selectedBoard === tab.code
-                    ? "border border-primary bg-primary/10 text-primary"
-                    : "border border-surface bg-white text-textSub hover:bg-surface"
-                }`}
-              >
-                {tab.label}
-              </button>
+                  className={`h-9 rounded-xl px-4 text-sm font-semibold transition ${
+                    selectedBoard === tab.code
+                      ? "border border-primary bg-primary/10 text-primary"
+                      : "border border-gray-300 bg-white text-textSub hover:bg-surface"
+                  }`}
+                >
+                  {tab.label}
+                </button>
             ))}
           </div>
           <div className="px-1 pt-1">
