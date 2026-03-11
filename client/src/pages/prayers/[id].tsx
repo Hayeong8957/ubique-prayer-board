@@ -68,14 +68,15 @@ export default function PrayerDetailPage({ post, comments, error }: PrayerDetail
             <Button size="sm" variant={post.hasAmened ? "secondary" : "ghost"}>
               🙏 아멘 {post.amenCount}
             </Button>
-            <Button size="sm" variant="ghost" className="gap-1">
+            {/* TO-BE 배포 후 댓글 기능 추가 */}
+            {/* <Button size="sm" variant="ghost" className="gap-1">
               <MessageCircle className="h-4 w-4" />
               댓글 {post.commentCount}
-            </Button>
+            </Button> */}
           </div>
         </Card>
-
-        <Card className="p-4">
+        {/* TO-BE 배포 후 댓글 기능 추가 */}
+        {/* <Card className="p-4">
           <p className="mb-3 text-sm font-semibold text-textMain">댓글</p>
           {comments.length === 0 ? (
             <p className="text-sm text-textSub">아직 댓글이 없습니다.</p>
@@ -94,7 +95,7 @@ export default function PrayerDetailPage({ post, comments, error }: PrayerDetail
               ))}
             </div>
           )}
-        </Card>
+        </Card> */}
       </main>
     </div>
   );

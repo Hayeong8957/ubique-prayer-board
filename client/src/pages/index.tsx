@@ -230,7 +230,7 @@ export default function Home() {
       <main className="mx-auto flex h-[calc(100dvh-0.75rem)] w-full max-w-2xl flex-col px-3 pt-3">
         <section className="shrink-0">
           <header className="mb-4 flex items-center justify-between px-1 pt-1">
-            <h1 className="text-xl font-bold text-textMain">지용셀 중보기도</h1>
+            <h1 className="text-xl font-bold text-textMain">지용셀의 작은 기도 공간</h1>
             {status === "authenticated" ? (
               <div className="relative" ref={profileMenuRef}>
                 <button
@@ -342,7 +342,22 @@ export default function Home() {
           ) : null}
 
           {normalPosts.map((post) => (
-            <Card key={post.id} className="mb-3 p-4">
+            <Card
+              key={post.id}
+              className={`mb-3 p-4 ${isPrayerBoard ? "cursor-pointer" : ""}`}
+              role={isPrayerBoard ? "button" : undefined}
+              tabIndex={isPrayerBoard ? 0 : -1}
+              onClick={() => {
+                if (isPrayerBoard) router.push(`/prayers/${post.id}`);
+              }}
+              onKeyDown={(event) => {
+                if (!isPrayerBoard) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  router.push(`/prayers/${post.id}`);
+                }
+              }}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-semibold text-textMain">{displayAuthor(post)}</p>
                 <span className="text-xs text-textSub">{formatTimeLabel(post.createdAt)}</span>
@@ -362,14 +377,23 @@ export default function Home() {
                 <Button
                   size="sm"
                   variant={post.hasAmened ? "secondary" : "ghost"}
-                  onClick={() => onToggleAmen(post.id)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleAmen(post.id);
+                  }}
                 >
                   🙏 아멘 {post.amenCount}
                 </Button>
-                <Button size="sm" variant="ghost" className="gap-1">
+                {/* TO-BE 배포 후 댓글 기능 추가 */}
+                {/* <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <MessageCircle className="h-4 w-4" />
                   댓글 {post.commentCount}
-                </Button>
+                </Button> */}
               </div>
             </Card>
           ))}

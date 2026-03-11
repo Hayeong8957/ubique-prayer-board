@@ -63,10 +63,10 @@ export default function NewPrayerPage() {
 
         <Card className="flex-1 p-4">
           <h1 className="mb-2 text-lg font-bold text-textMain">기도제목 작성</h1>
-          <p className="mb-4 text-sm text-textSub">나를 숨기고 마음 전하기를 선택할 수 있어요.</p>
+          <p className="mb-4 text-sm text-textSub">나를 숨기고 기도 공유하기를 선택할 수 있어요.</p>
 
           <label className="mb-4 flex items-center justify-between rounded-xl border border-surface bg-surface/50 px-4 py-3">
-            <span className="text-sm font-medium text-textMain">나를 숨기고 마음 전하기</span>
+            <span className="text-sm font-medium text-textMain">나를 숨기고 기도 공유하기</span>
             <button
               type="button"
               role="switch"
