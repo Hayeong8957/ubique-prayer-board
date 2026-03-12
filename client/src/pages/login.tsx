@@ -1,6 +1,6 @@
 import { signIn } from "next-auth/react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 export default function LoginPage() {
   return (

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { authOptions } from "@/lib/auth/options";
 
 type CreatePostResponse =

@@ -180,7 +180,7 @@ export async function listPostsByAuthorAndBoardCode(
 
 export async function getPostById(postId: string, viewerUserId?: string | null): Promise<PostDetail | null> {
   const supabaseAdmin = getSupabaseAdmin();
-  const { data, error } = await supabaseAdmin
+  const postPromise = supabaseAdmin
     .from("posts")
     .select(
       "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
@@ -189,24 +189,32 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
     .is("deleted_at", null)
     .maybeSingle<PostDetailRow>();
 
+  const amenPromise = viewerUserId
+    ? supabaseAdmin
+        .from("post_amens")
+        .select("post_id")
+        .eq("post_id", postId)
+        .eq("user_id", viewerUserId)
+        .maybeSingle<AmenStateRow>()
+    : null;
+
+  const [postResult, amenResult] = await Promise.all([
+    postPromise,
+    amenPromise ?? Promise.resolve({ data: null, error: null }),
+  ]);
+
+  const { data, error } = postResult;
+
   if (error) {
     throw new Error(`Failed to load post: ${error.message}`);
   }
   if (!data || !data.board) return null;
 
-  let hasAmened = false;
-  if (viewerUserId) {
-    const { data: amenData, error: amenError } = await supabaseAdmin
-      .from("post_amens")
-      .select("post_id")
-      .eq("post_id", postId)
-      .eq("user_id", viewerUserId)
-      .maybeSingle<AmenStateRow>();
-    if (amenError) {
-      throw new Error(`Failed to load amen state: ${amenError.message}`);
-    }
-    hasAmened = Boolean(amenData);
+  const amenError = amenResult?.error ?? null;
+  if (amenError) {
+    throw new Error(`Failed to load amen state: ${amenError.message}`);
   }
+  const hasAmened = Boolean(amenResult?.data);
 
   return {
     id: data.id,

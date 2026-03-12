@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { useRouter } from "next/router";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
-import { Card } from "@/components/ui/card";
-import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button";
+import { Card } from "@/components/ui/Card";
+import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
 import { authOptions } from "@/lib/auth/options";
 import { listPostsByAuthorAndBoardCode } from "@/features/posts/server";
 import type { PostListItem } from "@/features/posts/types";
@@ -46,10 +47,17 @@ function groupByDate(posts: PostListItem[]) {
 }
 
 export default function ProfilePage({ prayerPosts, sermonPosts, error }: ProfilePageProps) {
+  const router = useRouter();
   const groupedPrayers = groupByDate(prayerPosts);
   const groupedSermons = groupByDate(sermonPosts);
   const prayerGroupKeys = Object.keys(groupedPrayers).sort((a, b) => (a < b ? 1 : -1));
   const sermonGroupKeys = Object.keys(groupedSermons).sort((a, b) => (a < b ? 1 : -1));
+
+  function prefetchPath(path: string) {
+    router.prefetch(path).catch(() => {
+      // ignore prefetch failures
+    });
+  }
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -93,6 +101,8 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
                           <Link
                             key={post.id}
                             href={`/prayers/${post.id}`}
+                            onMouseEnter={() => prefetchPath(`/prayers/${post.id}`)}
+                            onTouchStart={() => prefetchPath(`/prayers/${post.id}`)}
                             className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
                           >
                             <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
@@ -123,6 +133,8 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
                           <Link
                             key={post.id}
                             href={`/sermons/${post.id}`}
+                            onMouseEnter={() => prefetchPath(`/sermons/${post.id}`)}
+                            onTouchStart={() => prefetchPath(`/sermons/${post.id}`)}
                             className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
                           >
                             <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
