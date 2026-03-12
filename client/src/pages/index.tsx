@@ -3,10 +3,10 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { LoginRequiredModal } from "@/components/auth/login-required-modal";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button";
+import { LoginRequiredModal } from "@/components/auth/LoginRequiredModal";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
 import type { BoardCode, PostListItem } from "@/features/posts/types";
 
 type PostListResponse =
@@ -68,6 +68,10 @@ function displayAuthor(post: PostListItem) {
   return post.isAnonymous ? "익명의 지체" : post.authorName;
 }
 
+function getDetailPath(boardCode: BoardCode, postId: string) {
+  return boardCode === "prayer" ? `/prayers/${postId}` : `/sermons/${postId}`;
+}
+
 export default function Home() {
   const router = useRouter();
   const { status, data: session } = useSession();
@@ -80,6 +84,7 @@ export default function Home() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [amenPendingByPostId, setAmenPendingByPostId] = useState<Record<string, boolean>>({});
 
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -215,6 +220,17 @@ export default function Home() {
     return () => observer.disconnect();
   }, [hasNextPage, isInitialLoading, isLoadingMore, nextPage, selectedBoard]);
 
+  useEffect(() => {
+    if (posts.length === 0) return;
+    const prefetchTargets = posts.slice(0, 5);
+    for (const post of prefetchTargets) {
+      const path = getDetailPath(selectedBoard, post.id);
+      router.prefetch(path).catch(() => {
+        // ignore prefetch failures
+      });
+    }
+  }, [posts, router, selectedBoard]);
+
   function onClickCreatePrayer() {
     if (status === "authenticated") {
       router.push(isPrayerBoard ? "/prayers/new" : "/sermons/new");
@@ -228,17 +244,63 @@ export default function Home() {
       setIsLoginModalOpen(true);
       return;
     }
+    if (amenPendingByPostId[postId]) return;
+
+    const boardAtRequest = selectedBoard;
+    const targetPost = feedByBoard[boardAtRequest].posts.find((post) => post.id === postId);
+    if (!targetPost) return;
+
+    const previousAmenCount = targetPost.amenCount;
+    const previousHasAmened = targetPost.hasAmened;
+    const optimisticHasAmened = !previousHasAmened;
+    const optimisticAmenCount = optimisticHasAmened
+      ? previousAmenCount + 1
+      : Math.max(previousAmenCount - 1, 0);
+
+    setAmenPendingByPostId((prev) => ({ ...prev, [postId]: true }));
+    setFeedByBoard((prev) => ({
+      ...prev,
+      [boardAtRequest]: {
+        ...prev[boardAtRequest],
+        posts: prev[boardAtRequest].posts.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                amenCount: optimisticAmenCount,
+                hasAmened: optimisticHasAmened,
+              }
+            : post
+        ),
+      },
+    }));
 
     try {
       const response = await fetch(`/api/posts/${postId}/amen`, { method: "POST" });
       const payload = (await response.json()) as AmenToggleResponse;
-      if (!response.ok || !payload.ok) return;
+      if (!response.ok || !payload.ok) {
+        setFeedByBoard((prev) => ({
+          ...prev,
+          [boardAtRequest]: {
+            ...prev[boardAtRequest],
+            posts: prev[boardAtRequest].posts.map((post) =>
+              post.id === postId
+                ? {
+                    ...post,
+                    amenCount: previousAmenCount,
+                    hasAmened: previousHasAmened,
+                  }
+                : post
+            ),
+          },
+        }));
+        return;
+      }
 
       setFeedByBoard((prev) => ({
         ...prev,
-        [selectedBoard]: {
-          ...prev[selectedBoard],
-          posts: prev[selectedBoard].posts.map((post) =>
+        [boardAtRequest]: {
+          ...prev[boardAtRequest],
+          posts: prev[boardAtRequest].posts.map((post) =>
             post.id === postId
               ? {
                   ...post,
@@ -250,7 +312,27 @@ export default function Home() {
         },
       }));
     } catch {
-      // keep silent for MVP
+      setFeedByBoard((prev) => ({
+        ...prev,
+        [boardAtRequest]: {
+          ...prev[boardAtRequest],
+          posts: prev[boardAtRequest].posts.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  amenCount: previousAmenCount,
+                  hasAmened: previousHasAmened,
+                }
+              : post
+          ),
+        },
+      }));
+    } finally {
+      setAmenPendingByPostId((prev) => {
+        const next = { ...prev };
+        delete next[postId];
+        return next;
+      });
     }
   }
 
@@ -406,12 +488,22 @@ export default function Home() {
               role="button"
               tabIndex={0}
               onClick={() => {
-                router.push(isPrayerBoard ? `/prayers/${post.id}` : `/sermons/${post.id}`);
+                router.push(getDetailPath(selectedBoard, post.id));
+              }}
+              onMouseEnter={() => {
+                router.prefetch(getDetailPath(selectedBoard, post.id)).catch(() => {
+                  // ignore prefetch failures
+                });
+              }}
+              onTouchStart={() => {
+                router.prefetch(getDetailPath(selectedBoard, post.id)).catch(() => {
+                  // ignore prefetch failures
+                });
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  router.push(isPrayerBoard ? `/prayers/${post.id}` : `/sermons/${post.id}`);
+                  router.push(getDetailPath(selectedBoard, post.id));
                 }
               }}
             >
@@ -436,6 +528,7 @@ export default function Home() {
                 <Button
                   size="sm"
                   variant={post.hasAmened ? "secondary" : "ghost"}
+                  disabled={Boolean(amenPendingByPostId[post.id])}
                   onClick={(event) => {
                     event.stopPropagation();
                     onToggleAmen(post.id);

@@ -7,7 +7,7 @@ interface ScrollToTopButtonProps {
   threshold?: number;
 }
 
-export function ScrollToTopButton({ containerRef, threshold = 220 }: ScrollToTopButtonProps) {
+export function ScrollToTopButton({ containerRef, threshold = 120 }: ScrollToTopButtonProps) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function ScrollToTopButton({ containerRef, threshold = 220 }: ScrollToTop
       type="button"
       aria-label="맨 위로 이동"
       onClick={scrollToTop}
-      className={`fixed bottom-[calc(1rem+var(--ubique-safe-bottom)+2px)] right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-surface bg-white text-textMain shadow-sm transition-all ${
+      className={`fixed bottom-[calc(1rem+var(--ubique-safe-bottom)+10px)] right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-surface bg-white text-textMain shadow-sm transition-all ${
         isVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
       }`}
     >
