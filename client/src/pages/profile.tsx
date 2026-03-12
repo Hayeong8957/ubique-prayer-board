@@ -7,7 +7,8 @@ import { listPostsByAuthorAndBoardCode } from "@/features/posts/server";
 import type { PostListItem } from "@/features/posts/types";
 
 interface ProfilePageProps {
-  posts: PostListItem[];
+  prayerPosts: PostListItem[];
+  sermonPosts: PostListItem[];
   error?: string;
 }
 
@@ -34,14 +35,20 @@ function timeLabel(value: string) {
   return `${hh}:${mi}`;
 }
 
-export default function ProfilePage({ posts, error }: ProfilePageProps) {
-  const grouped = posts.reduce<Record<string, PostListItem[]>>((acc, post) => {
+function groupByDate(posts: PostListItem[]) {
+  return posts.reduce<Record<string, PostListItem[]>>((acc, post) => {
     const key = dateKey(post.createdAt);
     if (!acc[key]) acc[key] = [];
     acc[key].push(post);
     return acc;
   }, {});
-  const groupKeys = Object.keys(grouped).sort((a, b) => (a < b ? 1 : -1));
+}
+
+export default function ProfilePage({ prayerPosts, sermonPosts, error }: ProfilePageProps) {
+  const groupedPrayers = groupByDate(prayerPosts);
+  const groupedSermons = groupByDate(sermonPosts);
+  const prayerGroupKeys = Object.keys(groupedPrayers).sort((a, b) => (a < b ? 1 : -1));
+  const sermonGroupKeys = Object.keys(groupedSermons).sort((a, b) => (a < b ? 1 : -1));
 
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -51,44 +58,89 @@ export default function ProfilePage({ posts, error }: ProfilePageProps) {
             ← 홈으로
           </Link>
         </div>
-
-        <Card className="p-4">
+        
+        <div>
           <h1 className="mb-1 text-lg font-bold text-textMain">내 프로필</h1>
-          <p className="mb-4 text-sm text-textSub">내가 작성한 과거 기도제목</p>
+          <p className="mb-4 text-sm text-textSub">내가 작성한 기도제목과 주일 말씀</p>
+        </div>
 
-          {error ? (
+        {error ? (
+          <Card className="mb-3 p-4">
             <p className="text-sm text-red-600">목록을 불러오지 못했습니다: {error}</p>
-          ) : null}
+          </Card>
+        ) : null}
 
-          {!error && posts.length === 0 ? (
-            <p className="text-sm text-textSub">아직 작성한 기도제목이 없습니다.</p>
-          ) : null}
+        {!error && prayerPosts.length === 0 && sermonPosts.length === 0 ? (
+          <Card className="mb-3 p-4">
+            <p className="text-sm text-textSub">아직 작성한 글이 없습니다.</p>
+          </Card>
+        ) : null}
 
-          {!error && groupKeys.length > 0 ? (
-            <div className="space-y-4">
-              {groupKeys.map((key) => (
-                <section key={key}>
-                  <h2 className="mb-2 text-xs font-semibold text-textSub">{dateLabel(key)}</h2>
-                  <div className="space-y-2">
-                    {grouped[key].map((post) => (
-                      <Link
-                        key={post.id}
-                        href={`/prayers/${post.id}`}
-                        className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
-                      >
-                        <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
-                        <p className="line-clamp-2 text-sm text-textSub">{post.content}</p>
-                        <p className="mt-2 text-xs text-textSub">
-                          {timeLabel(post.createdAt)} · 댓글 {post.commentCount}
-                        </p>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : null}
-        </Card>
+        {!error ? (
+          <div className="space-y-3">
+            <Card className="p-4">
+              <h2 className="mb-3 text-sm font-semibold text-textMain">내 기도제목</h2>
+              {prayerGroupKeys.length === 0 ? (
+                <p className="text-sm text-textSub">작성한 기도제목이 없습니다.</p>
+              ) : (
+                <div className="space-y-4">
+                  {prayerGroupKeys.map((key) => (
+                    <section key={`prayer-${key}`}>
+                      <h3 className="mb-2 text-xs font-semibold text-textSub">{dateLabel(key)}</h3>
+                      <div className="space-y-2">
+                        {groupedPrayers[key].map((post) => (
+                          <Link
+                            key={post.id}
+                            href={`/prayers/${post.id}`}
+                            className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
+                          >
+                            <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
+                            <p className="line-clamp-2 text-sm text-textSub">{post.content}</p>
+                            <p className="mt-2 text-xs text-textSub">
+                              {timeLabel(post.createdAt)} · 댓글 {post.commentCount}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <h2 className="mb-3 text-sm font-semibold text-textMain">내 주일 말씀</h2>
+              {sermonGroupKeys.length === 0 ? (
+                <p className="text-sm text-textSub">작성한 주일 말씀이 없습니다.</p>
+              ) : (
+                <div className="space-y-4">
+                  {sermonGroupKeys.map((key) => (
+                    <section key={`sermon-${key}`}>
+                      <h3 className="mb-2 text-xs font-semibold text-textSub">{dateLabel(key)}</h3>
+                      <div className="space-y-2">
+                        {groupedSermons[key].map((post) => (
+                          <Link
+                            key={post.id}
+                            href={`/sermons/${post.id}`}
+                            className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
+                          >
+                            <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
+                            {post.scriptureText ? (
+                              <p className="line-clamp-1 text-sm text-textSub">{post.scriptureText}</p>
+                            ) : null}
+                            <p className="mt-2 text-xs text-textSub">
+                              {timeLabel(post.createdAt)} · 댓글 {post.commentCount}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        ) : null}
       </main>
     </div>
   );
@@ -106,10 +158,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   }
 
   try {
-    const posts = await listPostsByAuthorAndBoardCode(session.user.id, "prayer");
-    return { props: { posts } };
+    const [prayerPosts, sermonPosts] = await Promise.all([
+      listPostsByAuthorAndBoardCode(session.user.id, "prayer"),
+      listPostsByAuthorAndBoardCode(session.user.id, "sermon"),
+    ]);
+    return { props: { prayerPosts, sermonPosts } };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return { props: { posts: [], error: message } };
+    return { props: { prayerPosts: [], sermonPosts: [], error: message } };
   }
 };

@@ -5,12 +5,14 @@ import type {
   CreatePostInput,
   PostDetail,
   PostListItem,
+  UpdatePostInput,
 } from "@/features/posts/types";
 
 type BoardRow = { id: string; code: string };
 type PostRow = {
   id: string;
   board_id: string;
+  author_user_id: string;
   title: string;
   scripture_text: string | null;
   content: string;
@@ -22,6 +24,11 @@ type PostRow = {
   author: { name: string } | null;
 };
 type PostDetailRow = PostRow & { board: { code: BoardCode } | null };
+type EditablePostRow = {
+  id: string;
+  author_user_id: string;
+  board: { code: BoardCode } | null;
+};
 type CommentRow = {
   id: string;
   post_id: string;
@@ -74,7 +81,7 @@ export async function listPostsByBoardCodePaginated(
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
     )
     .eq("board_id", board.id)
     .is("deleted_at", null)
@@ -137,7 +144,7 @@ export async function listPostsByAuthorAndBoardCode(
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
     )
     .eq("author_user_id", authorUserId)
     .eq("board_id", board.id)
@@ -170,7 +177,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
+      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
     )
     .eq("id", postId)
     .is("deleted_at", null)
@@ -198,6 +205,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   return {
     id: data.id,
     boardCode: data.board.code,
+    authorUserId: data.author_user_id,
     title: data.title,
     scriptureText: data.scripture_text,
     content: data.content,
@@ -284,6 +292,98 @@ export async function createPost(input: CreatePostInput): Promise<string> {
   }
 
   return data.id;
+}
+
+async function getEditablePostById(postId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("posts")
+    .select("id,author_user_id,board:boards!posts_board_id_fkey(code)")
+    .eq("id", postId)
+    .is("deleted_at", null)
+    .maybeSingle<EditablePostRow>();
+
+  if (error) {
+    throw new Error(`Failed to load post: ${error.message}`);
+  }
+  return data;
+}
+
+export async function updatePostById(input: UpdatePostInput) {
+  const post = await getEditablePostById(input.postId);
+  if (!post || !post.board) {
+    throw new Error("POST_NOT_FOUND");
+  }
+  if (post.author_user_id !== input.authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const content = input.content.trim();
+  if (!content) {
+    throw new Error("Content is required");
+  }
+
+  const updatePayload: {
+    title?: string;
+    scripture_text?: string | null;
+    content: string;
+    is_anonymous?: boolean;
+  } = {
+    content,
+  };
+
+  if (post.board.code === "sermon") {
+    const title = (input.title ?? "").trim();
+    const scriptureText = (input.scriptureText ?? "").trim();
+    if (!title) throw new Error("Title is required");
+    if (!scriptureText) throw new Error("Scripture text is required");
+    updatePayload.title = title;
+    updatePayload.scripture_text = scriptureText;
+    updatePayload.is_anonymous = false;
+  } else {
+    updatePayload.title = createTitleFromContent(content);
+    updatePayload.scripture_text = null;
+    if (typeof input.isAnonymous === "boolean") {
+      updatePayload.is_anonymous = input.isAnonymous;
+    }
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from("posts")
+    .update(updatePayload)
+    .eq("id", input.postId)
+    .eq("author_user_id", input.authorUserId)
+    .is("deleted_at", null);
+
+  if (error) {
+    throw new Error(`Failed to update post: ${error.message}`);
+  }
+}
+
+export async function softDeletePostById(postId: string, authorUserId: string) {
+  const post = await getEditablePostById(postId);
+  if (!post) {
+    throw new Error("POST_NOT_FOUND");
+  }
+  if (post.author_user_id !== authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from("posts")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: authorUserId,
+    })
+    .eq("id", postId)
+    .eq("author_user_id", authorUserId)
+    .is("deleted_at", null);
+
+  if (error) {
+    throw new Error(`Failed to delete post: ${error.message}`);
+  }
 }
 
 export async function togglePostAmen(postId: string, userId: string) {
