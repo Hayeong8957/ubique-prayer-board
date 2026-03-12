@@ -7,13 +7,9 @@ import { getPostById } from "@/features/posts/server";
 import type { PostDetail } from "@/features/posts/types";
 import { authOptions } from "@/lib/auth/options";
 
-interface PrayerDetailPageProps {
+interface SermonDetailPageProps {
   post: PostDetail | null;
   error?: string;
-}
-
-function displayAuthor(name: string, isAnonymous: boolean) {
-  return isAnonymous ? "익명의 지체" : name;
 }
 
 function formatFullDate(value: string) {
@@ -27,7 +23,7 @@ function formatFullDate(value: string) {
   return `${yyyy}.${mm}.${dd} ${hh}:${mi}`;
 }
 
-export default function PrayerDetailPage({ post, error }: PrayerDetailPageProps) {
+export default function SermonDetailPage({ post, error }: SermonDetailPageProps) {
   if (error) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-6">
@@ -48,58 +44,33 @@ export default function PrayerDetailPage({ post, error }: PrayerDetailPageProps)
     <div className="min-h-screen bg-background pb-10">
       <main className="mx-auto w-full max-w-2xl px-4 pt-4">
         <div className="mb-3">
-          <Link href="/?board=prayer" className="text-sm font-medium text-primary">
-            ← 기도제목 목록으로
+          <Link href="/?board=sermon" className="text-sm font-medium text-primary">
+            ← 주일 말씀 목록으로
           </Link>
         </div>
 
         <Card className="mb-3 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-textMain">
-              {displayAuthor(post.authorName, post.isAnonymous)}
-            </p>
+            <p className="text-sm font-semibold text-textMain">{post.authorName}</p>
             <span className="text-xs text-textSub">{formatFullDate(post.createdAt)}</span>
           </div>
           <h1 className="mb-2 text-lg font-bold text-textMain">{post.title}</h1>
+          {post.scriptureText ? (
+            <p className="mb-3 text-sm font-medium text-textSub">{post.scriptureText}</p>
+          ) : null}
           <p className="mb-4 whitespace-pre-wrap text-[15px] text-textMain">{post.content}</p>
           <div className="flex items-center gap-2">
             <Button size="sm" variant={post.hasAmened ? "secondary" : "ghost"}>
               🙏 아멘 {post.amenCount}
             </Button>
-            {/* TO-BE 배포 후 댓글 기능 추가 */}
-            {/* <Button size="sm" variant="ghost" className="gap-1">
-              <MessageCircle className="h-4 w-4" />
-              댓글 {post.commentCount}
-            </Button> */}
           </div>
         </Card>
-        {/* TO-BE 배포 후 댓글 기능 추가 */}
-        {/* <Card className="p-4">
-          <p className="mb-3 text-sm font-semibold text-textMain">댓글</p>
-          {comments.length === 0 ? (
-            <p className="text-sm text-textSub">아직 댓글이 없습니다.</p>
-          ) : (
-            <div className="space-y-3">
-              {comments.map((comment) => (
-                <div key={comment.id} className="rounded-xl border border-surface bg-surface/40 p-3">
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-xs font-semibold text-textMain">
-                      {displayAuthor(comment.authorName, comment.isAnonymous)}
-                    </p>
-                    <span className="text-xs text-textSub">{formatFullDate(comment.createdAt)}</span>
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm text-textMain">{comment.content}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card> */}
       </main>
     </div>
   );
 }
 
-export const getServerSideProps: GetServerSideProps<PrayerDetailPageProps> = async (context) => {
+export const getServerSideProps: GetServerSideProps<SermonDetailPageProps> = async (context) => {
   const postId = context.params?.id;
   if (typeof postId !== "string") {
     return { props: { post: null, error: "잘못된 요청입니다." } };
@@ -108,6 +79,9 @@ export const getServerSideProps: GetServerSideProps<PrayerDetailPageProps> = asy
   try {
     const session = await getServerSession(context.req, context.res, authOptions);
     const post = await getPostById(postId, session?.user?.id ?? null);
+    if (!post || post.boardCode !== "sermon") {
+      return { props: { post: null, error: "주일 말씀 게시글이 아닙니다." } };
+    }
     return { props: { post } };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";

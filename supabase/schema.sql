@@ -113,6 +113,7 @@ create table if not exists public.posts (
   id uuid primary key default gen_random_uuid(),
   board_id uuid not null references public.boards(id) on delete restrict,
   title text not null,
+  scripture_text text,
   content text not null,
   author_user_id uuid not null references public.users(id) on delete restrict,
 
@@ -497,6 +498,7 @@ comment on column public.posts.is_anonymous is 'true면 UI에 작성자명을 �
 comment on column public.comments.is_anonymous is 'true면 UI에 작성자명을 익명으로 노출';
 comment on column public.posts.is_pinned is '관리자 고정글 여부';
 comment on column public.posts.pinned_at is '고정글 정렬용 시간';
+comment on column public.posts.scripture_text is '주일 말씀 게시글에서 노출할 말씀 구절';
 comment on column public.posts.comment_count is '목록 조회 성능을 위한 캐시 컬럼';
 comment on column public.posts.amen_count is '아멘(좋아요) 수 캐시 컬럼';
 comment on column public.posts.view_count is '게시글 조회수';

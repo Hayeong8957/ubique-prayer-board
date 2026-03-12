@@ -12,6 +12,7 @@ type PostRow = {
   id: string;
   board_id: string;
   title: string;
+  scripture_text: string | null;
   content: string;
   is_anonymous: boolean;
   is_pinned: boolean;
@@ -73,7 +74,7 @@ export async function listPostsByBoardCodePaginated(
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
     )
     .eq("board_id", board.id)
     .is("deleted_at", null)
@@ -108,6 +109,7 @@ export async function listPostsByBoardCodePaginated(
   const mapped = items.map((post) => ({
     id: post.id,
     title: post.title,
+    scriptureText: post.scripture_text,
     content: post.content,
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
@@ -135,7 +137,7 @@ export async function listPostsByAuthorAndBoardCode(
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
     )
     .eq("author_user_id", authorUserId)
     .eq("board_id", board.id)
@@ -151,6 +153,7 @@ export async function listPostsByAuthorAndBoardCode(
   return (data ?? []).map((post) => ({
     id: post.id,
     title: post.title,
+    scriptureText: post.scripture_text,
     content: post.content,
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
@@ -167,7 +170,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,title,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
+      "id,board_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
     )
     .eq("id", postId)
     .is("deleted_at", null)
@@ -196,6 +199,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
     id: data.id,
     boardCode: data.board.code,
     title: data.title,
+    scriptureText: data.scripture_text,
     content: data.content,
     isAnonymous: data.is_anonymous,
     isPinned: data.is_pinned,
@@ -248,13 +252,25 @@ export async function createPost(input: CreatePostInput): Promise<string> {
     throw new Error("Content is required");
   }
 
-  const title = (input.title ?? "").trim() || createTitleFromContent(content);
+  const scriptureText = (input.scriptureText ?? "").trim();
+  const titleInput = (input.title ?? "").trim();
+  const title =
+    input.boardCode === "sermon"
+      ? titleInput
+      : titleInput || createTitleFromContent(content);
+
+  if (input.boardCode === "sermon") {
+    if (!title) throw new Error("Title is required");
+    if (!scriptureText) throw new Error("Scripture text is required");
+  }
+
   const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from("posts")
     .insert({
       board_id: board.id,
       title,
+      scripture_text: scriptureText || null,
       content,
       author_user_id: input.authorUserId,
       is_anonymous: input.isAnonymous,
