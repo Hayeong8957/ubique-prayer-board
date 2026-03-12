@@ -1,7 +1,8 @@
 :root {
-  --ubique-primary: #3182f6;
-  --ubique-secondary: #ffd43b;
-  --ubique-success: #2ecc71;
+  --ubique-primary: #3a8af9;
+  --ubique-secondary: #fbd653;
+  --ubique-success: #38dc7c;
+  --ubique-fail: #dc3838;
   --ubique-bg: #F2F4F7;
   --ubique-surface: #f2f4f7;
   --ubique-text-main: #191f28;

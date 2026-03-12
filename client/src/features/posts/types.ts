@@ -17,6 +17,7 @@ export interface PostListItem {
 export interface PostDetail {
   id: string;
   boardCode: BoardCode;
+  authorUserId: string;
   title: string;
   scriptureText: string | null;
   content: string;
@@ -27,6 +28,15 @@ export interface PostDetail {
   hasAmened: boolean;
   createdAt: string;
   authorName: string;
+}
+
+export interface UpdatePostInput {
+  postId: string;
+  authorUserId: string;
+  title?: string;
+  scriptureText?: string | null;
+  content: string;
+  isAnonymous?: boolean;
 }
 
 export interface CommentItem {

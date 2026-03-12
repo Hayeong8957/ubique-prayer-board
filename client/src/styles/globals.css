@@ -12,6 +12,7 @@
   --color-primary: var(--ubique-primary);
   --color-secondary: var(--ubique-secondary);
   --color-success: var(--ubique-success);
+  --color-fail: var(--ubique-fail);
   --color-surface: var(--ubique-surface);
   --color-textMain: var(--ubique-text-main);
   --color-textSub: var(--ubique-text-sub);
