@@ -3,6 +3,7 @@ export type BoardCode = "prayer" | "sermon";
 export interface PostListItem {
   id: string;
   title: string;
+  scriptureText: string | null;
   content: string;
   isAnonymous: boolean;
   isPinned: boolean;
@@ -17,6 +18,7 @@ export interface PostDetail {
   id: string;
   boardCode: BoardCode;
   title: string;
+  scriptureText: string | null;
   content: string;
   isAnonymous: boolean;
   isPinned: boolean;
@@ -38,8 +40,9 @@ export interface CommentItem {
 
 export interface CreatePostInput {
   boardCode: BoardCode;
+  title?: string;
+  scriptureText?: string | null;
   content: string;
   isAnonymous: boolean;
   authorUserId: string;
-  title?: string;
 }

@@ -11,14 +11,23 @@ type CreatePostResponse =
   | { ok: true; data: { id: string } }
   | { ok: false; error: string };
 
-export default function NewPrayerPage() {
+export default function NewSermonPage() {
   const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [scriptureText, setScriptureText] = useState("");
   const [content, setContent] = useState("");
-  const [isAnonymous, setIsAnonymous] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit() {
+    if (!title.trim()) {
+      setError("제목을 입력해주세요.");
+      return;
+    }
+    if (!scriptureText.trim()) {
+      setError("말씀을 입력해주세요.");
+      return;
+    }
     if (!content.trim()) {
       setError("본문을 입력해주세요.");
       return;
@@ -32,9 +41,11 @@ export default function NewPrayerPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          boardType: "prayer",
+          boardType: "sermon",
+          title,
+          scriptureText,
           content,
-          isAnonymous,
+          isAnonymous: false,
         }),
       });
 
@@ -44,7 +55,7 @@ export default function NewPrayerPage() {
         return;
       }
 
-      await router.push(`/prayers/${payload.data.id}`);
+      await router.push(`/sermons/${payload.data.id}`);
     } catch {
       setError("네트워크 오류가 발생했습니다.");
     } finally {
@@ -56,40 +67,35 @@ export default function NewPrayerPage() {
     <div className="min-h-screen bg-background">
       <main className="mx-auto flex w-full max-w-2xl flex-col px-4 pb-8 pt-4">
         <div className="mb-3">
-          <Link href="/?board=prayer" className="text-sm font-medium text-primary">
-            ← 기도제목 목록으로
+          <Link href="/?board=sermon" className="text-sm font-medium text-primary">
+            ← 주일 말씀 목록으로
           </Link>
         </div>
 
         <Card className="flex-1 p-4">
-          <h1 className="mb-2 text-lg font-bold text-textMain">기도제목 작성</h1>
-          <p className="mb-4 text-sm text-textSub">나를 숨기고 기도 공유하기를 선택할 수 있어요.</p>
+          <h1 className="mb-2 text-lg font-bold text-textMain">주일 말씀 작성</h1>
+          <p className="mb-4 text-sm text-textSub">제목, 말씀, 본문을 입력해 주세요.</p>
 
-          <label className="mb-4 flex items-center justify-between rounded-xl border border-surface bg-surface/50 px-4 py-3">
-            <span className="text-sm font-medium text-textMain">나를 숨기고 기도 공유하기</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isAnonymous}
-              onClick={() => setIsAnonymous((prev) => !prev)}
-              className={`relative h-7 w-12 rounded-full transition ${
-                isAnonymous ? "bg-primary" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition ${
-                  isAnonymous ? "left-[22px]" : "left-0.5"
-                }`}
-              />
-            </button>
-          </label>
-
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="기도제목을 자유롭게 작성해 주세요."
-            className="min-h-[260px] w-full resize-none rounded-[var(--radius-toss)] border border-surface bg-white px-4 py-4 text-base text-textMain placeholder:text-textSub"
-          />
+          <div className="space-y-3">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="제목"
+              className="h-12 w-full rounded-xl border border-surface bg-white px-4 text-sm text-textMain placeholder:text-textSub"
+            />
+            <input
+              value={scriptureText}
+              onChange={(e) => setScriptureText(e.target.value)}
+              placeholder="말씀 (예: 요한복음 3:16)"
+              className="h-12 w-full rounded-xl border border-surface bg-white px-4 text-sm text-textMain placeholder:text-textSub"
+            />
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="본문"
+              className="min-h-[220px] w-full resize-none rounded-xl border border-surface bg-white px-4 py-4 text-base text-textMain placeholder:text-textSub"
+            />
+          </div>
 
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 

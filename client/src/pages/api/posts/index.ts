@@ -60,6 +60,9 @@ export default async function handler(
 
   if (req.method === "POST") {
     const boardCode = parseBoardCode(req.body?.boardType);
+    const title = typeof req.body?.title === "string" ? req.body.title : "";
+    const scriptureText =
+      typeof req.body?.scriptureText === "string" ? req.body.scriptureText : "";
     const content =
       typeof req.body?.content === "string" ? req.body.content : "";
     const isAnonymous = Boolean(req.body?.isAnonymous);
@@ -75,6 +78,8 @@ export default async function handler(
     try {
       const id = await createPost({
         boardCode,
+        title,
+        scriptureText,
         content,
         isAnonymous,
         authorUserId: session.user.id,

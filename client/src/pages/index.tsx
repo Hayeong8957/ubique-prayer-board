@@ -1,5 +1,5 @@
 import { User } from "lucide-react";
-import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
@@ -34,6 +34,11 @@ const BOARD_TABS: Array<{ code: BoardCode; label: string }> = [
   { code: "sermon", label: "주일 말씀" },
 ];
 
+function parseBoardFromQuery(value: string | string[] | undefined): BoardCode {
+  if (value === "sermon") return "sermon";
+  return "prayer";
+}
+
 function createInitialFeedState(): FeedState {
   return {
     posts: [],
@@ -65,7 +70,9 @@ function displayAuthor(post: PostListItem) {
 export default function Home() {
   const router = useRouter();
   const { status, data: session } = useSession();
-  const [selectedBoard, setSelectedBoard] = useState<BoardCode>("prayer");
+  const [selectedBoard, setSelectedBoard] = useState<BoardCode>(() =>
+    parseBoardFromQuery(router.query.board)
+  );
   const [feedByBoard, setFeedByBoard] = useState<Record<BoardCode, FeedState>>({
     prayer: createInitialFeedState(),
     sermon: createInitialFeedState(),
@@ -75,6 +82,11 @@ export default function Home() {
 
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const inFlightRequestKeysRef = useRef<Set<string>>(new Set());
+  const loadedPagesRef = useRef<Record<BoardCode, Set<number>>>({
+    prayer: new Set<number>(),
+    sermon: new Set<number>(),
+  });
 
   const currentFeed = feedByBoard[selectedBoard];
   const posts = currentFeed.posts;
@@ -87,6 +99,12 @@ export default function Home() {
   const pinnedPost = posts.find((post) => post.isPinned);
   const normalPosts = posts.filter((post) => !post.isPinned);
   const isPrayerBoard = selectedBoard === "prayer";
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const boardFromQuery = parseBoardFromQuery(router.query.board);
+    setSelectedBoard(boardFromQuery);
+  }, [router.isReady, router.query.board]);
 
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
@@ -107,6 +125,12 @@ export default function Home() {
   }, [isProfileMenuOpen]);
 
   async function fetchPosts(board: BoardCode, page: number, append: boolean) {
+    const requestKey = `${board}:${page}`;
+    if (inFlightRequestKeysRef.current.has(requestKey)) return;
+    if (loadedPagesRef.current[board].has(page)) return;
+
+    inFlightRequestKeysRef.current.add(requestKey);
+
     setFeedByBoard((prev) => ({
       ...prev,
       [board]: {
@@ -142,6 +166,7 @@ export default function Home() {
           posts: append ? [...prev[board].posts, ...payload.data] : payload.data,
         },
       }));
+      loadedPagesRef.current[board].add(page);
     } catch {
       setFeedByBoard((prev) => ({
         ...prev,
@@ -151,6 +176,7 @@ export default function Home() {
         },
       }));
     } finally {
+      inFlightRequestKeysRef.current.delete(requestKey);
       setFeedByBoard((prev) => ({
         ...prev,
         [board]: {
@@ -162,11 +188,13 @@ export default function Home() {
     }
   }
 
+  const selectedFeed = feedByBoard[selectedBoard];
+
   useEffect(() => {
-    if (!feedByBoard[selectedBoard].loadedOnce && !feedByBoard[selectedBoard].isInitialLoading) {
+    if (!selectedFeed.loadedOnce && !selectedFeed.isInitialLoading) {
       fetchPosts(selectedBoard, 1, false);
     }
-  }, [feedByBoard, selectedBoard]);
+  }, [selectedBoard, selectedFeed.loadedOnce, selectedFeed.isInitialLoading]);
 
   useEffect(() => {
     if (!loadMoreRef.current || !hasNextPage) return;
@@ -186,9 +214,8 @@ export default function Home() {
   }, [hasNextPage, isInitialLoading, isLoadingMore, nextPage, selectedBoard]);
 
   function onClickCreatePrayer() {
-    if (!isPrayerBoard) return;
     if (status === "authenticated") {
-      router.push("/prayers/new");
+      router.push(isPrayerBoard ? "/prayers/new" : "/sermons/new");
       return;
     }
     setIsLoginModalOpen(true);
@@ -230,12 +257,21 @@ export default function Home() {
       <main className="mx-auto flex h-[calc(100dvh-0.75rem)] w-full max-w-2xl flex-col px-3 pt-3">
         <section className="shrink-0">
           <header className="mb-4 flex items-center justify-between px-1 pt-1">
-            <h1 className="text-xl font-bold text-textMain">지용셀의 작은 기도 공간</h1>
+            <div className="flex items-center gap-2">
+              <Image
+                src="/icon.png"
+                alt="Ubique 로고"
+                width={38}
+                height={38}
+                className="rounded-xl object-cover"
+              />
+              <h1 className="text-xl font-bold text-textMain">지용셀의 작은 기도 공간</h1>
+            </div>
             {status === "authenticated" ? (
               <div className="relative" ref={profileMenuRef}>
                 <button
                   type="button"
-                  className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-surface bg-white text-textSub"
+                  className="flex h-[40px] w-[40px] items-center justify-center overflow-hidden rounded-full border border-surface bg-white text-textSub"
                   aria-label="프로필"
                   onClick={() => setIsProfileMenuOpen((prev) => !prev)}
                 >
@@ -290,15 +326,25 @@ export default function Home() {
               <button
                 key={tab.code}
                 type="button"
-                onClick={() => setSelectedBoard(tab.code)}
-                  className={`h-9 rounded-xl px-4 text-sm font-semibold transition ${
-                    selectedBoard === tab.code
-                      ? "border border-primary bg-primary/10 text-primary"
-                      : "border border-gray-300 bg-white text-textSub hover:bg-surface"
-                  }`}
-                >
-                  {tab.label}
-                </button>
+                onClick={() => {
+                  setSelectedBoard(tab.code);
+                  router.replace(
+                    {
+                      pathname: "/",
+                      query: { board: tab.code },
+                    },
+                    undefined,
+                    { shallow: true, scroll: false }
+                  );
+                }}
+                className={`h-9 rounded-xl px-4 text-sm font-semibold transition ${
+                  selectedBoard === tab.code
+                    ? "border border-primary bg-primary/10 text-primary"
+                    : "border border-gray-300 bg-white text-textSub hover:bg-surface"
+                }`}
+              >
+                {tab.label}
+              </button>
             ))}
           </div>
           <div className="px-1 pt-1">
@@ -315,14 +361,9 @@ export default function Home() {
               <button
                 type="button"
                 onClick={onClickCreatePrayer}
-                disabled={!isPrayerBoard}
-                className={`inline-flex h-12 w-full items-center justify-center rounded-xl px-5 text-sm font-semibold transition ${
-                  isPrayerBoard
-                    ? "border border-primary bg-primary text-white hover:brightness-95"
-                    : "cursor-not-allowed border border-surface bg-surface text-textSub"
-                }`}
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-primary bg-primary px-5 text-sm font-semibold text-white transition hover:brightness-95"
               >
-                {isPrayerBoard ? "기도제목 작성하기" : "주일 말씀 작성 준비중"}
+                {isPrayerBoard ? "기도제목 작성하기" : "주일 말씀 작성하기"}
               </button>
             </Card>
           </div>
@@ -334,7 +375,13 @@ export default function Home() {
               <p className="text-sm font-semibold text-primary">
                 📌 고정 {isPrayerBoard ? "기도제목" : "주일 말씀"}
               </p>
-              <p className="mt-1 text-sm text-textMain">{pinnedPost.content}</p>
+              <p className="mt-1 text-sm font-semibold text-textMain">{pinnedPost.title}</p>
+              {!isPrayerBoard && pinnedPost.scriptureText ? (
+                <p className="mt-1 text-sm text-textSub">{pinnedPost.scriptureText}</p>
+              ) : null}
+              {isPrayerBoard ? (
+                <p className="mt-1 text-sm text-textMain">{pinnedPost.content}</p>
+              ) : null}
             </Card>
           ) : null}
 
@@ -353,17 +400,16 @@ export default function Home() {
           {normalPosts.map((post) => (
             <Card
               key={post.id}
-              className={`mb-3 p-4 ${isPrayerBoard ? "cursor-pointer" : ""}`}
-              role={isPrayerBoard ? "button" : undefined}
-              tabIndex={isPrayerBoard ? 0 : -1}
+              className="mb-3 cursor-pointer p-4"
+              role="button"
+              tabIndex={0}
               onClick={() => {
-                if (isPrayerBoard) router.push(`/prayers/${post.id}`);
+                router.push(isPrayerBoard ? `/prayers/${post.id}` : `/sermons/${post.id}`);
               }}
               onKeyDown={(event) => {
-                if (!isPrayerBoard) return;
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  router.push(`/prayers/${post.id}`);
+                  router.push(isPrayerBoard ? `/prayers/${post.id}` : `/sermons/${post.id}`);
                 }
               }}
             >
@@ -372,16 +418,18 @@ export default function Home() {
                 <span className="text-xs text-textSub">{formatTimeLabel(post.createdAt)}</span>
               </div>
               {isPrayerBoard ? (
-                <Link
-                  href={`/prayers/${post.id}`}
-                  className="mb-2 block text-sm font-semibold text-textMain"
-                >
-                  {post.title}
-                </Link>
-              ) : (
                 <p className="mb-2 text-sm font-semibold text-textMain">{post.title}</p>
+              ) : (
+                <>
+                  <p className="mb-2 text-sm font-semibold text-textMain">{post.title}</p>
+                  {post.scriptureText ? (
+                    <p className="mb-3 text-sm text-textSub">{post.scriptureText}</p>
+                  ) : null}
+                </>
               )}
-              <p className="mb-4 text-[15px] text-textMain">{post.content}</p>
+              {isPrayerBoard ? (
+                <p className="mb-4 text-[15px] text-textMain">{post.content}</p>
+              ) : null}
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -418,7 +466,9 @@ export default function Home() {
             <p className="mb-3 text-center text-sm text-textSub">더 불러오는 중...</p>
           ) : null}
           {!hasNextPage && posts.length > 0 ? (
-            <p className="mb-3 text-center text-xs text-textSub">마지막 기도제목까지 확인했어요.</p>
+            <p className="mb-3 text-center text-xs text-textSub">
+              마지막 {isPrayerBoard ? "기도제목" : "주일 말씀"}까지 확인했어요.
+            </p>
           ) : null}
         </section>
       </main>
