@@ -6,6 +6,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { LoginRequiredModal } from "@/components/auth/login-required-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button";
 import type { BoardCode, PostListItem } from "@/features/posts/types";
 
 type PostListResponse =
@@ -82,6 +83,7 @@ export default function Home() {
 
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const feedScrollRef = useRef<HTMLElement | null>(null);
   const inFlightRequestKeysRef = useRef<Set<string>>(new Set());
   const loadedPagesRef = useRef<Record<BoardCode, Set<number>>>({
     prayer: new Set<number>(),
@@ -369,7 +371,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="transparent-scroll flex-1 overflow-y-auto px-1 pt-1">
+        <section ref={feedScrollRef} className="transparent-scroll flex-1 overflow-y-auto px-1 pt-1">
           {pinnedPost ? (
             <Card className="mb-3 bg-primary/10 p-4">
               <p className="text-sm font-semibold text-primary">
@@ -428,7 +430,7 @@ export default function Home() {
                 </>
               )}
               {isPrayerBoard ? (
-                <p className="mb-4 text-[15px] text-textMain">{post.content}</p>
+                <p className="mb-4 whitespace-pre-wrap text-[15px] text-textMain">{post.content}</p>
               ) : null}
               <div className="flex items-center gap-2">
                 <Button
@@ -477,6 +479,7 @@ export default function Home() {
         open={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
       />
+      <ScrollToTopButton containerRef={feedScrollRef} />
     </div>
   );
 }

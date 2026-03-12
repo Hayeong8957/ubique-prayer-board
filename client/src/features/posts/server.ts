@@ -15,7 +15,7 @@ type PostRow = {
   author_user_id: string;
   title: string;
   scripture_text: string | null;
-  content: string;
+  content: string | null;
   is_anonymous: boolean;
   is_pinned: boolean;
   comment_count: number;
@@ -78,11 +78,14 @@ export async function listPostsByBoardCodePaginated(
   const from = (safePage - 1) * safePageSize;
   const to = from + safePageSize;
 
+  const listSelectColumns =
+    boardCode === "sermon"
+      ? "id,board_id,author_user_id,title,scripture_text,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+
   const { data, error } = await supabaseAdmin
     .from("posts")
-    .select(
-      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-    )
+    .select(listSelectColumns)
     .eq("board_id", board.id)
     .is("deleted_at", null)
     .order("is_pinned", { ascending: false })
@@ -117,7 +120,7 @@ export async function listPostsByBoardCodePaginated(
     id: post.id,
     title: post.title,
     scriptureText: post.scripture_text,
-    content: post.content,
+    content: post.content ?? "",
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
     commentCount: post.comment_count,
@@ -141,11 +144,14 @@ export async function listPostsByAuthorAndBoardCode(
   if (!board) return [];
 
   const supabaseAdmin = getSupabaseAdmin();
+  const listSelectColumns =
+    boardCode === "sermon"
+      ? "id,board_id,author_user_id,title,scripture_text,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+
   const { data, error } = await supabaseAdmin
     .from("posts")
-    .select(
-      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-    )
+    .select(listSelectColumns)
     .eq("author_user_id", authorUserId)
     .eq("board_id", board.id)
     .is("deleted_at", null)
@@ -161,7 +167,7 @@ export async function listPostsByAuthorAndBoardCode(
     id: post.id,
     title: post.title,
     scriptureText: post.scripture_text,
-    content: post.content,
+    content: post.content ?? "",
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
     commentCount: post.comment_count,
@@ -208,7 +214,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
     authorUserId: data.author_user_id,
     title: data.title,
     scriptureText: data.scripture_text,
-    content: data.content,
+    content: data.content ?? "",
     isAnonymous: data.is_anonymous,
     isPinned: data.is_pinned,
     commentCount: data.comment_count,

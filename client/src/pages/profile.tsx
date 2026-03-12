@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import { Card } from "@/components/ui/card";
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button";
 import { authOptions } from "@/lib/auth/options";
 import { listPostsByAuthorAndBoardCode } from "@/features/posts/server";
 import type { PostListItem } from "@/features/posts/types";
@@ -142,6 +143,7 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
           </div>
         ) : null}
       </main>
+      <ScrollToTopButton />
     </div>
   );
 }
