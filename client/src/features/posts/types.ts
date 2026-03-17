@@ -42,10 +42,18 @@ export interface UpdatePostInput {
 export interface CommentItem {
   id: string;
   postId: string;
+  authorUserId: string;
   content: string;
   isAnonymous: boolean;
   createdAt: string;
   authorName: string;
+}
+
+export interface CommentPagination {
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  nextPage: number | null;
 }
 
 export interface CreatePostInput {

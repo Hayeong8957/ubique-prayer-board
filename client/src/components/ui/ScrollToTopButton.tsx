@@ -5,9 +5,14 @@ import type { RefObject } from "react";
 interface ScrollToTopButtonProps {
   containerRef?: RefObject<HTMLElement | null>;
   threshold?: number;
+  bottomOffsetClassName?: string;
 }
 
-export function ScrollToTopButton({ containerRef, threshold = 120 }: ScrollToTopButtonProps) {
+export function ScrollToTopButton({
+  containerRef,
+  threshold = 120,
+  bottomOffsetClassName,
+}: ScrollToTopButtonProps) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -38,7 +43,9 @@ export function ScrollToTopButton({ containerRef, threshold = 120 }: ScrollToTop
       type="button"
       aria-label="맨 위로 이동"
       onClick={scrollToTop}
-      className={`fixed bottom-[calc(1rem+var(--ubique-safe-bottom)+10px)] right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-surface bg-white text-textMain shadow-sm transition-all ${
+      className={`fixed right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-surface bg-white text-textMain shadow-sm transition-all ${
+        bottomOffsetClassName ?? "bottom-[calc(1rem+var(--ubique-safe-bottom)+10px)]"
+      } ${
         isVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
       }`}
     >

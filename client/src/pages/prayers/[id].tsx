@@ -3,8 +3,10 @@ import { useState } from "react";
 import { useRouter } from "next/router";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
+import { PostCommentsSection } from "@/components/posts/PostCommentsSection";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
 import { getPostById } from "@/features/posts/server";
 import type { PostDetail } from "@/features/posts/types";
 import { authOptions } from "@/lib/auth/options";
@@ -12,6 +14,7 @@ import { authOptions } from "@/lib/auth/options";
 interface PrayerDetailPageProps {
   post: PostDetail | null;
   canManage: boolean;
+  currentUserId: string | null;
   error?: string;
 }
 
@@ -32,7 +35,12 @@ function formatFullDate(value: string) {
 
 type UpdatePostResponse = { ok: true; data: { id: string } } | { ok: false; error: string };
 
-export default function PrayerDetailPage({ post, canManage, error }: PrayerDetailPageProps) {
+export default function PrayerDetailPage({
+  post,
+  canManage,
+  currentUserId,
+  error,
+}: PrayerDetailPageProps) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(post?.content ?? "");
@@ -107,13 +115,16 @@ export default function PrayerDetailPage({ post, canManage, error }: PrayerDetai
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
-      <main className="mx-auto w-full max-w-2xl px-4 pt-4">
-        <div className="mb-3">
+    <div className="min-h-screen bg-background pb-40">
+      <div className="sticky top-0 z-30 border-b border-surface/80 bg-background/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-2xl items-center px-4 py-4">
           <Link href="/?board=prayer" className="text-sm font-medium text-primary">
             ← 기도제목 목록으로
           </Link>
         </div>
+      </div>
+
+      <main className="mx-auto w-full max-w-2xl px-4 pt-4">
 
         <Card className="mb-3 p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -202,35 +213,20 @@ export default function PrayerDetailPage({ post, canManage, error }: PrayerDetai
                 )}
               </div>
             ) : null}
-            {/* TO-BE 배포 후 댓글 기능 추가 */}
-            {/* <Button size="sm" variant="ghost" className="gap-1">
-              <MessageCircle className="h-4 w-4" />
-              댓글 {post.commentCount}
-            </Button> */}
           </div>
         </Card>
-        {/* TO-BE 배포 후 댓글 기능 추가 */}
-        {/* <Card className="p-4">
-          <p className="mb-3 text-sm font-semibold text-textMain">댓글</p>
-          {comments.length === 0 ? (
-            <p className="text-sm text-textSub">아직 댓글이 없습니다.</p>
-          ) : (
-            <div className="space-y-3">
-              {comments.map((comment) => (
-                <div key={comment.id} className="rounded-xl border border-surface bg-surface/40 p-3">
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-xs font-semibold text-textMain">
-                      {displayAuthor(comment.authorName, comment.isAnonymous)}
-                    </p>
-                    <span className="text-xs text-textSub">{formatFullDate(comment.createdAt)}</span>
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm text-textMain">{comment.content}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card> */}
+
+        <PostCommentsSection
+          postId={postId}
+          currentUserId={currentUserId}
+          initialCommentCount={post.commentCount}
+        />
       </main>
+
+      <ScrollToTopButton
+        threshold={240}
+        bottomOffsetClassName="bottom-[calc(6.25rem+var(--ubique-safe-bottom))]"
+      />
     </div>
   );
 }
@@ -238,7 +234,9 @@ export default function PrayerDetailPage({ post, canManage, error }: PrayerDetai
 export const getServerSideProps: GetServerSideProps<PrayerDetailPageProps> = async (context) => {
   const postId = context.params?.id;
   if (typeof postId !== "string") {
-    return { props: { post: null, canManage: false, error: "잘못된 요청입니다." } };
+    return {
+      props: { post: null, canManage: false, currentUserId: null, error: "잘못된 요청입니다." },
+    };
   }
 
   try {
@@ -248,10 +246,11 @@ export const getServerSideProps: GetServerSideProps<PrayerDetailPageProps> = asy
       props: {
         post,
         canManage: Boolean(post && session?.user?.id && post.authorUserId === session.user.id),
+        currentUserId: session?.user?.id ?? null,
       },
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return { props: { post: null, canManage: false, error: message } };
+    return { props: { post: null, canManage: false, currentUserId: null, error: message } };
   }
 };
