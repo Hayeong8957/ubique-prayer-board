@@ -3,8 +3,10 @@ import { useState } from "react";
 import { useRouter } from "next/router";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
+import { PostCommentsSection } from "@/components/posts/PostCommentsSection";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
 import { getPostById } from "@/features/posts/server";
 import type { PostDetail } from "@/features/posts/types";
 import { authOptions } from "@/lib/auth/options";
@@ -12,6 +14,7 @@ import { authOptions } from "@/lib/auth/options";
 interface SermonDetailPageProps {
   post: PostDetail | null;
   canManage: boolean;
+  currentUserId: string | null;
   error?: string;
 }
 
@@ -28,7 +31,12 @@ function formatFullDate(value: string) {
 
 type UpdatePostResponse = { ok: true; data: { id: string } } | { ok: false; error: string };
 
-export default function SermonDetailPage({ post, canManage, error }: SermonDetailPageProps) {
+export default function SermonDetailPage({
+  post,
+  canManage,
+  currentUserId,
+  error,
+}: SermonDetailPageProps) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(post?.title ?? "");
@@ -112,13 +120,16 @@ export default function SermonDetailPage({ post, canManage, error }: SermonDetai
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
-      <main className="mx-auto w-full max-w-2xl px-4 pt-4">
-        <div className="mb-3">
+    <div className="min-h-screen bg-background pb-40">
+      <div className="sticky top-0 z-30 border-b border-surface/80 bg-background/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-2xl items-center px-4 py-4">
           <Link href="/?board=sermon" className="text-sm font-medium text-primary">
             ← 주일 말씀 목록으로
           </Link>
         </div>
+      </div>
+
+      <main className="mx-auto w-full max-w-2xl px-4 pt-4">
 
         <Card className="mb-3 p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -207,7 +218,18 @@ export default function SermonDetailPage({ post, canManage, error }: SermonDetai
             ) : null}
           </div>
         </Card>
+
+        <PostCommentsSection
+          postId={postId}
+          currentUserId={currentUserId}
+          initialCommentCount={post.commentCount}
+        />
       </main>
+
+      <ScrollToTopButton
+        threshold={240}
+        bottomOffsetClassName="bottom-[calc(6.25rem+var(--ubique-safe-bottom))]"
+      />
     </div>
   );
 }
@@ -215,23 +237,33 @@ export default function SermonDetailPage({ post, canManage, error }: SermonDetai
 export const getServerSideProps: GetServerSideProps<SermonDetailPageProps> = async (context) => {
   const postId = context.params?.id;
   if (typeof postId !== "string") {
-    return { props: { post: null, canManage: false, error: "잘못된 요청입니다." } };
+    return {
+      props: { post: null, canManage: false, currentUserId: null, error: "잘못된 요청입니다." },
+    };
   }
 
   try {
     const session = await getServerSession(context.req, context.res, authOptions);
     const post = await getPostById(postId, session?.user?.id ?? null);
     if (!post || post.boardCode !== "sermon") {
-      return { props: { post: null, canManage: false, error: "주일 말씀 게시글이 아닙니다." } };
+      return {
+        props: {
+          post: null,
+          canManage: false,
+          currentUserId: session?.user?.id ?? null,
+          error: "주일 말씀 게시글이 아닙니다.",
+        },
+      };
     }
     return {
       props: {
         post,
         canManage: Boolean(post && session?.user?.id && post.authorUserId === session.user.id),
+        currentUserId: session?.user?.id ?? null,
       },
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return { props: { post: null, canManage: false, error: message } };
+    return { props: { post: null, canManage: false, currentUserId: null, error: message } };
   }
 };

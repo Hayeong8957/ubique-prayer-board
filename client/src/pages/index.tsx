@@ -1,4 +1,4 @@
-import { User } from "lucide-react";
+import { MessageCircle, User } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
@@ -524,10 +524,11 @@ export default function Home() {
               {isPrayerBoard ? (
                 <p className="mb-4 whitespace-pre-wrap text-[15px] text-textMain">{post.content}</p>
               ) : null}
-              <div className="flex items-center gap-2">
+              <div className="grid w-1/2 min-w-[220px] max-w-[260px] grid-cols-2 gap-2">
                 <Button
                   size="sm"
                   variant={post.hasAmened ? "secondary" : "ghost"}
+                  className="w-full justify-center"
                   disabled={Boolean(amenPendingByPostId[post.id])}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -536,16 +537,15 @@ export default function Home() {
                 >
                   🙏 아멘 {post.amenCount}
                 </Button>
-                {/* TO-BE 배포 후 댓글 기능 추가 */}
-                {/* <Button
+                <Button
                   size="sm"
                   variant="ghost"
-                  className="gap-1"
+                  className="w-full justify-center gap-1"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <MessageCircle className="h-4 w-4" />
                   댓글 {post.commentCount}
-                </Button> */}
+                </Button>
               </div>
             </Card>
           ))}

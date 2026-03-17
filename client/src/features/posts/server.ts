@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type {
   BoardCode,
   CommentItem,
+  CommentPagination,
   CreatePostInput,
   PostDetail,
   PostListItem,
@@ -32,10 +33,25 @@ type EditablePostRow = {
 type CommentRow = {
   id: string;
   post_id: string;
+  author_user_id: string;
   content: string;
   is_anonymous: boolean;
   created_at: string;
   author: { name: string } | null;
+};
+type InsertedCommentRow = {
+  id: string;
+  post_id: string;
+  author_user_id: string;
+  content: string;
+  is_anonymous: boolean;
+  created_at: string;
+  author: { name: string } | null;
+};
+type EditableCommentRow = {
+  id: string;
+  post_id: string;
+  author_user_id: string;
 };
 type InsertedPostRow = { id: string };
 type AmenStateRow = { post_id: string };
@@ -233,28 +249,200 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   };
 }
 
-export async function listCommentsByPostId(postId: string): Promise<CommentItem[]> {
+function mapComment(comment: CommentRow | InsertedCommentRow): CommentItem {
+  return {
+    id: comment.id,
+    postId: comment.post_id,
+    authorUserId: comment.author_user_id,
+    content: comment.content,
+    isAnonymous: comment.is_anonymous,
+    createdAt: comment.created_at,
+    authorName: comment.author?.name ?? "알 수 없음",
+  };
+}
+
+export async function listCommentsByPostIdPaginated(
+  postId: string,
+  page: number,
+  pageSize: number
+): Promise<{ items: CommentItem[]; pagination: CommentPagination }> {
   const supabaseAdmin = getSupabaseAdmin();
+  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safePageSize =
+    Number.isFinite(pageSize) && pageSize > 0 ? Math.min(Math.floor(pageSize), 20) : 5;
+  const from = (safePage - 1) * safePageSize;
+  const to = from + safePageSize;
+
   const { data, error } = await supabaseAdmin
     .from("comments")
-    .select("id,post_id,content,is_anonymous,created_at,author:users!comments_author_user_id_fkey(name)")
+    .select(
+      "id,post_id,author_user_id,content,is_anonymous,created_at,author:users!comments_author_user_id_fkey(name)"
+    )
     .eq("post_id", postId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
+    .range(from, to)
     .returns<CommentRow[]>();
 
   if (error) {
     throw new Error(`Failed to load comments: ${error.message}`);
   }
 
-  return (data ?? []).map((comment) => ({
-    id: comment.id,
-    postId: comment.post_id,
-    content: comment.content,
-    isAnonymous: comment.is_anonymous,
-    createdAt: comment.created_at,
-    authorName: comment.author?.name ?? "알 수 없음",
-  }));
+  const rows = data ?? [];
+  const pageRows = rows.slice(0, safePageSize).reverse();
+
+  return {
+    items: pageRows.map(mapComment),
+    pagination: {
+      page: safePage,
+      pageSize: safePageSize,
+      hasMore: rows.length > safePageSize,
+      nextPage: rows.length > safePageSize ? safePage + 1 : null,
+    },
+  };
+}
+
+async function ensureVisiblePost(postId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("posts")
+    .select("id")
+    .eq("id", postId)
+    .is("deleted_at", null)
+    .maybeSingle<{ id: string }>();
+
+  if (error) {
+    throw new Error(`Failed to load post for comment: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function createComment(input: {
+  postId: string;
+  authorUserId: string;
+  content: string;
+  isAnonymous?: boolean;
+}): Promise<CommentItem> {
+  const post = await ensureVisiblePost(input.postId);
+  if (!post) {
+    throw new Error("POST_NOT_FOUND");
+  }
+
+  const content = input.content.trim();
+  if (!content) {
+    throw new Error("Content is required");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("comments")
+    .insert({
+      post_id: input.postId,
+      author_user_id: input.authorUserId,
+      content,
+      is_anonymous: input.isAnonymous ?? false,
+    })
+    .select(
+      "id,post_id,author_user_id,content,is_anonymous,created_at,author:users!comments_author_user_id_fkey(name)"
+    )
+    .single<InsertedCommentRow>();
+
+  if (error || !data) {
+    throw new Error(`Failed to create comment: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapComment(data);
+}
+
+async function getEditableCommentById(commentId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("comments")
+    .select("id,post_id,author_user_id")
+    .eq("id", commentId)
+    .is("deleted_at", null)
+    .maybeSingle<EditableCommentRow>();
+
+  if (error) {
+    throw new Error(`Failed to load comment: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function updateCommentById(input: {
+  commentId: string;
+  postId: string;
+  authorUserId: string;
+  content: string;
+}): Promise<CommentItem> {
+  const comment = await getEditableCommentById(input.commentId);
+  if (!comment || comment.post_id !== input.postId) {
+    throw new Error("COMMENT_NOT_FOUND");
+  }
+  if (comment.author_user_id !== input.authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const content = input.content.trim();
+  if (!content) {
+    throw new Error("Content is required");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("comments")
+    .update({ content })
+    .eq("id", input.commentId)
+    .eq("author_user_id", input.authorUserId)
+    .eq("post_id", input.postId)
+    .is("deleted_at", null)
+    .select(
+      "id,post_id,author_user_id,content,is_anonymous,created_at,author:users!comments_author_user_id_fkey(name)"
+    )
+    .single<InsertedCommentRow>();
+
+  if (error || !data) {
+    throw new Error(`Failed to update comment: ${error?.message ?? "unknown error"}`);
+  }
+
+  return mapComment(data);
+}
+
+export async function softDeleteCommentById(input: {
+  commentId: string;
+  postId: string;
+  authorUserId: string;
+}) {
+  const comment = await getEditableCommentById(input.commentId);
+  if (!comment || comment.post_id !== input.postId) {
+    throw new Error("COMMENT_NOT_FOUND");
+  }
+  if (comment.author_user_id !== input.authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from("comments")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: input.authorUserId,
+    })
+    .eq("id", input.commentId)
+    .eq("author_user_id", input.authorUserId)
+    .eq("post_id", input.postId)
+    .is("deleted_at", null);
+
+  if (error) {
+    throw new Error(`Failed to delete comment: ${error.message}`);
+  }
+}
+
+export async function listCommentsByPostId(postId: string): Promise<CommentItem[]> {
+  const result = await listCommentsByPostIdPaginated(postId, 1, 100);
+  return result.items;
 }
 
 function createTitleFromContent(content: string) {

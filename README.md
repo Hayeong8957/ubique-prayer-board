@@ -35,6 +35,7 @@
 client/src
 ├── components/
 │   ├── auth/
+│   ├── posts/
 │   └── ui/
 ├── features/
 │   ├── auth/
@@ -71,6 +72,8 @@ client/src
   프론트엔드 영역이다.
 - `components/auth/`: 인증 흐름에서만 쓰는 UI처럼 특정 기능에 가까운 재사용 컴포넌트를 둔다.
   프론트엔드 영역이다.
+- `components/posts/`: 게시글 상세나 댓글처럼 게시글 도메인에 가까운 재사용 UI를 둔다.
+  프론트엔드 영역이다.
 - `styles/`: 전역 스타일과 디자인 토큰을 둔다.
   프론트엔드 영역이다.
 - `types/`: `next-auth`, `next-pwa`처럼 외부 라이브러리 타입 확장 선언을 둔다.
@@ -89,6 +92,7 @@ client/src
 
 - `components/ui`: `Button`, `Card` 같은 프리미티브 UI 컴포넌트
 - `components/auth`: 로그인 필요 모달 등 인증 관련 UI
+- `components/posts`: 게시글 상세에서 공통으로 쓰는 댓글 UI
 - `features/auth`: 카카오 로그인 사용자 동기화 같은 인증 도메인 로직
 - `features/posts`: 게시글/댓글 조회와 게시판 도메인 타입
 - `lib/auth`: NextAuth 옵션과 인증 설정
