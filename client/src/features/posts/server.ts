@@ -17,6 +17,7 @@ type PostRow = {
   title: string;
   scripture_text: string | null;
   content: string | null;
+  image_urls: string[] | null;
   is_anonymous: boolean;
   is_pinned: boolean;
   comment_count: number;
@@ -56,6 +57,11 @@ type EditableCommentRow = {
 type InsertedPostRow = { id: string };
 type AmenStateRow = { post_id: string };
 type AmenCountRow = { amen_count: number };
+const MAX_POST_IMAGE_COUNT = 4;
+
+function normalizeImageUrls(imageUrls?: string[]) {
+  return (imageUrls ?? []).filter(Boolean).slice(0, MAX_POST_IMAGE_COUNT);
+}
 
 export async function getBoardByCode(boardCode: BoardCode) {
   const supabaseAdmin = getSupabaseAdmin();
@@ -96,8 +102,8 @@ export async function listPostsByBoardCodePaginated(
 
   const listSelectColumns =
     boardCode === "sermon"
-      ? "id,board_id,author_user_id,title,scripture_text,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-      : "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+      ? "id,board_id,author_user_id,title,scripture_text,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
   const { data, error } = await supabaseAdmin
     .from("posts")
@@ -137,6 +143,7 @@ export async function listPostsByBoardCodePaginated(
     title: post.title,
     scriptureText: post.scripture_text,
     content: post.content ?? "",
+    imageUrls: post.image_urls ?? [],
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
     commentCount: post.comment_count,
@@ -162,8 +169,8 @@ export async function listPostsByAuthorAndBoardCode(
   const supabaseAdmin = getSupabaseAdmin();
   const listSelectColumns =
     boardCode === "sermon"
-      ? "id,board_id,author_user_id,title,scripture_text,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-      : "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+      ? "id,board_id,author_user_id,title,scripture_text,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
   const { data, error } = await supabaseAdmin
     .from("posts")
@@ -184,6 +191,7 @@ export async function listPostsByAuthorAndBoardCode(
     title: post.title,
     scriptureText: post.scripture_text,
     content: post.content ?? "",
+    imageUrls: post.image_urls ?? [],
     isAnonymous: post.is_anonymous,
     isPinned: post.is_pinned,
     commentCount: post.comment_count,
@@ -199,7 +207,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   const postPromise = supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,author_user_id,title,scripture_text,content,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
+      "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
     )
     .eq("id", postId)
     .is("deleted_at", null)
@@ -239,6 +247,7 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
     title: data.title,
     scriptureText: data.scripture_text,
     content: data.content ?? "",
+    imageUrls: data.image_urls ?? [],
     isAnonymous: data.is_anonymous,
     isPinned: data.is_pinned,
     commentCount: data.comment_count,
@@ -464,6 +473,7 @@ export async function createPost(input: CreatePostInput): Promise<string> {
 
   const scriptureText = (input.scriptureText ?? "").trim();
   const titleInput = (input.title ?? "").trim();
+  const imageUrls = normalizeImageUrls(input.imageUrls);
   const title =
     input.boardCode === "sermon"
       ? titleInput
@@ -482,6 +492,7 @@ export async function createPost(input: CreatePostInput): Promise<string> {
       title,
       scripture_text: scriptureText || null,
       content,
+      image_urls: imageUrls,
       author_user_id: input.authorUserId,
       is_anonymous: input.isAnonymous,
       amen_count: 0,
@@ -529,9 +540,11 @@ export async function updatePostById(input: UpdatePostInput) {
     title?: string;
     scripture_text?: string | null;
     content: string;
+    image_urls: string[];
     is_anonymous?: boolean;
   } = {
     content,
+    image_urls: normalizeImageUrls(input.imageUrls),
   };
 
   if (post.board.code === "sermon") {

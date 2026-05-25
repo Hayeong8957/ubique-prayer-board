@@ -48,6 +48,9 @@ export default async function handler(
     const title = typeof req.body?.title === "string" ? req.body.title : "";
     const scriptureText =
       typeof req.body?.scriptureText === "string" ? req.body.scriptureText : "";
+    const imageUrls = Array.isArray(req.body?.imageUrls)
+      ? req.body.imageUrls.filter((value: unknown): value is string => typeof value === "string")
+      : [];
     const isAnonymous =
       typeof req.body?.isAnonymous === "boolean" ? req.body.isAnonymous : undefined;
 
@@ -58,6 +61,7 @@ export default async function handler(
         title,
         scriptureText,
         content,
+        imageUrls,
         isAnonymous,
       });
       return res.status(200).json({ ok: true, data: { id: postId } });

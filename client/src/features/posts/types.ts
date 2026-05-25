@@ -5,6 +5,7 @@ export interface PostListItem {
   title: string;
   scriptureText: string | null;
   content: string;
+  imageUrls: string[];
   isAnonymous: boolean;
   isPinned: boolean;
   commentCount: number;
@@ -21,6 +22,7 @@ export interface PostDetail {
   title: string;
   scriptureText: string | null;
   content: string;
+  imageUrls: string[];
   isAnonymous: boolean;
   isPinned: boolean;
   commentCount: number;
@@ -36,6 +38,7 @@ export interface UpdatePostInput {
   title?: string;
   scriptureText?: string | null;
   content: string;
+  imageUrls?: string[];
   isAnonymous?: boolean;
 }
 
@@ -61,6 +64,7 @@ export interface CreatePostInput {
   title?: string;
   scriptureText?: string | null;
   content: string;
+  imageUrls?: string[];
   isAnonymous: boolean;
   authorUserId: string;
 }
