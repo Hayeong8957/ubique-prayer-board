@@ -1,12 +1,22 @@
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import type { GetServerSideProps } from "next";
 import { getServerSession } from "next-auth/next";
 import { PostCommentsSection } from "@/components/posts/PostCommentsSection";
+import { PostImageGallery } from "@/components/posts/PostImageGallery";
+import { PostImagePicker } from "@/components/posts/PostImagePicker";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
+import {
+  createLocalPostImageDraft,
+  POST_IMAGE_MAX_COUNT,
+  revokeLocalPostImageDraft,
+  uploadPostImages,
+  validatePostImageFile,
+  type LocalPostImageDraft,
+} from "@/features/posts/images.client";
 import { getPostById } from "@/features/posts/server";
 import type { PostDetail } from "@/features/posts/types";
 import { authOptions } from "@/lib/auth/options";
@@ -42,8 +52,56 @@ export default function SermonDetailPage({
   const [title, setTitle] = useState(post?.title ?? "");
   const [scriptureText, setScriptureText] = useState(post?.scriptureText ?? "");
   const [content, setContent] = useState(post?.content ?? "");
+  const [imageUrls, setImageUrls] = useState(post?.imageUrls ?? []);
+  const [localImages, setLocalImages] = useState<LocalPostImageDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const localImagesRef = useRef<LocalPostImageDraft[]>([]);
+
+  useEffect(() => {
+    localImagesRef.current = localImages;
+  }, [localImages]);
+
+  useEffect(() => {
+    return () => {
+      for (const image of localImagesRef.current) {
+        revokeLocalPostImageDraft(image);
+      }
+    };
+  }, []);
+
+  function onAddFiles(files: File[]) {
+    const nextDrafts: LocalPostImageDraft[] = [];
+    const totalCount = imageUrls.length + localImages.length;
+
+    for (const file of files) {
+      if (totalCount + nextDrafts.length >= POST_IMAGE_MAX_COUNT) {
+        setSubmitError(`이미지는 최대 ${POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.`);
+        break;
+      }
+
+      const validationError = validatePostImageFile(file);
+      if (validationError) {
+        setSubmitError(validationError);
+        continue;
+      }
+
+      nextDrafts.push(createLocalPostImageDraft(file));
+    }
+
+    if (nextDrafts.length > 0) {
+      setSubmitError(null);
+      setLocalImages((prev) => [...prev, ...nextDrafts]);
+    }
+  }
+
+  function onRemoveLocalImage(id: string) {
+    setLocalImages((prev) => {
+      const target = prev.find((image) => image.id === id);
+      if (target) revokeLocalPostImageDraft(target);
+      return prev.filter((image) => image.id !== id);
+    });
+  }
 
   if (error) {
     return (
@@ -79,10 +137,16 @@ export default function SermonDetailPage({
     setSubmitError(null);
     setIsSubmitting(true);
     try {
+      const uploadedImageUrls = await uploadPostImages(localImages.map((image) => image.file));
       const response = await fetch(`/api/posts/${postId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, scriptureText, content }),
+        body: JSON.stringify({
+          title,
+          scriptureText,
+          content,
+          imageUrls: [...imageUrls, ...uploadedImageUrls],
+        }),
       });
       const payload = (await response.json()) as UpdatePostResponse;
       if (!response.ok || !payload.ok) {
@@ -91,8 +155,8 @@ export default function SermonDetailPage({
       }
       setIsEditing(false);
       await router.replace(router.asPath);
-    } catch {
-      setSubmitError("네트워크 오류가 발생했습니다.");
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
     } finally {
       setIsSubmitting(false);
     }
@@ -155,6 +219,17 @@ export default function SermonDetailPage({
                 onChange={(event) => setContent(event.target.value)}
                 className="mb-4 min-h-[220px] w-full resize-none rounded-xl border border-surface bg-white px-4 py-4 text-[15px] text-textMain"
               />
+              <PostImagePicker
+                existingImageUrls={imageUrls}
+                localImages={localImages}
+                maxCount={POST_IMAGE_MAX_COUNT}
+                disabled={isSubmitting}
+                onAddFiles={onAddFiles}
+                onRemoveExisting={(index) =>
+                  setImageUrls((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+                }
+                onRemoveLocal={onRemoveLocalImage}
+              />
             </>
           ) : (
             <>
@@ -162,6 +237,7 @@ export default function SermonDetailPage({
               {post.scriptureText ? (
                 <p className="mb-3 text-sm font-medium text-textSub">{post.scriptureText}</p>
               ) : null}
+              <PostImageGallery imageUrls={post.imageUrls} />
               <p className="mb-4 whitespace-pre-wrap text-[15px] text-textMain">{post.content}</p>
             </>
           )}
@@ -184,8 +260,13 @@ export default function SermonDetailPage({
                         setTitle(post.title);
                         setScriptureText(post.scriptureText ?? "");
                         setContent(post.content);
+                        setImageUrls(post.imageUrls);
                         setSubmitError(null);
                         setIsEditing(false);
+                        setLocalImages((prev) => {
+                          for (const image of prev) revokeLocalPostImageDraft(image);
+                          return [];
+                        });
                       }}
                       disabled={isSubmitting}
                     >

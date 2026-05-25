@@ -65,6 +65,9 @@ export default async function handler(
       typeof req.body?.scriptureText === "string" ? req.body.scriptureText : "";
     const content =
       typeof req.body?.content === "string" ? req.body.content : "";
+    const imageUrls = Array.isArray(req.body?.imageUrls)
+      ? req.body.imageUrls.filter((value: unknown): value is string => typeof value === "string")
+      : [];
     const isAnonymous = Boolean(req.body?.isAnonymous);
 
     const session = await getServerSession(req, res, authOptions);
@@ -81,6 +84,7 @@ export default async function handler(
         title,
         scriptureText,
         content,
+        imageUrls,
         isAnonymous,
         authorUserId: session.user.id,
       });

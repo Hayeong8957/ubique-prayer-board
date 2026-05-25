@@ -115,6 +115,7 @@ create table if not exists public.posts (
   title text not null,
   scripture_text text,
   content text not null,
+  image_urls text[] not null default '{}',
   author_user_id uuid not null references public.users(id) on delete restrict,
 
   is_anonymous boolean not null default false,
@@ -427,6 +428,30 @@ alter table public.posts enable row level security;
 alter table public.comments enable row level security;
 alter table public.post_amens enable row level security;
 
+-- =========================================================
+-- Storage
+-- Public read only. Uploads are performed by server role.
+-- =========================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'post-images',
+  'post-images',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists post_images_public_read on storage.objects;
+create policy post_images_public_read
+on storage.objects
+for select
+using (bucket_id = 'post-images');
+
 -- users: client direct read 차단
 drop policy if exists users_public_read on public.users;
 
@@ -499,6 +524,7 @@ comment on column public.comments.is_anonymous is 'true면 UI에 작성자명을
 comment on column public.posts.is_pinned is '관리자 고정글 여부';
 comment on column public.posts.pinned_at is '고정글 정렬용 시간';
 comment on column public.posts.scripture_text is '주일 말씀 게시글에서 노출할 말씀 구절';
+comment on column public.posts.image_urls is '게시글에 첨부된 이미지 public URL 배열';
 comment on column public.posts.comment_count is '목록 조회 성능을 위한 캐시 컬럼';
 comment on column public.posts.amen_count is '아멘(좋아요) 수 캐시 컬럼';
 comment on column public.posts.view_count is '게시글 조회수';

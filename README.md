@@ -49,7 +49,8 @@ client/src
 │   │   ├── boards/
 │   │   ├── health/
 │   │   ├── me/
-│   │   └── posts/
+│   │   ├── posts/
+│   │   └── uploads/
 │   ├── prayers/
 │   └── sermons/
 ├── styles/
@@ -103,6 +104,7 @@ client/src
 - `pages/api/me`: 내 게시글 조회 API
 - `pages/api/boards`: 게시판 메타 정보 API
 - `pages/api/health`: 인프라 상태 확인용 API
+- `pages/api/uploads`: 게시글 첨부 이미지 업로드 API
 
 ### 문서 관리 규칙
 
