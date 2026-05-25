@@ -10,13 +10,13 @@ export function PostImageGallery({ imageUrls }: PostImageGalleryProps) {
       {imageUrls.map((imageUrl, index) => (
         <div
           key={`${imageUrl}-${index}`}
-          className="overflow-hidden rounded-2xl border border-surface bg-surface/40"
+          className="overflow-hidden rounded-2xl border border-surface bg-surface/40 p-2"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt={`첨부 이미지 ${index + 1}`}
-            className="block max-h-[420px] w-full object-cover"
+            className="block max-h-[720px] w-full object-contain"
           />
         </div>
       ))}
