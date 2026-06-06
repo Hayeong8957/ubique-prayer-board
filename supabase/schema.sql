@@ -115,6 +115,8 @@ create table if not exists public.posts (
   title text not null,
   scripture_text text,
   content text not null,
+  status text not null default 'published',
+  published_at timestamptz,
   image_urls text[] not null default '{}',
   author_user_id uuid not null references public.users(id) on delete restrict,
 
@@ -141,6 +143,17 @@ for each row execute function public.set_updated_at();
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'chk_posts_status'
+      and conrelid = 'public.posts'::regclass
+  ) then
+    alter table public.posts
+      add constraint chk_posts_status
+      check (status in ('draft', 'published'));
+  end if;
+
   if not exists (
     select 1
     from pg_constraint
@@ -205,6 +218,10 @@ create index if not exists idx_posts_author_visible_created
   on public.posts (author_user_id, created_at desc)
   where deleted_at is null;
 
+create index if not exists idx_posts_status_created
+  on public.posts (status, created_at desc)
+  where deleted_at is null;
+
 -- pinned 전용 조회
 create index if not exists idx_posts_board_pinned_only
   on public.posts (board_id, pinned_at desc, created_at desc)
@@ -213,6 +230,21 @@ create index if not exists idx_posts_board_pinned_only
 create index if not exists idx_posts_board_amen_created
   on public.posts (board_id, amen_count desc, created_at desc)
   where deleted_at is null;
+
+-- =========================================================
+-- Post Images
+-- =========================================================
+create table if not exists public.post_images (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts(id) on delete cascade,
+  object_path text,
+  public_url text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_post_images_post_sort
+  on public.post_images (post_id, sort_order asc, created_at asc);
 
 -- =========================================================
 -- Post Amens (Like)
@@ -425,6 +457,7 @@ end $$;
 alter table public.users enable row level security;
 alter table public.boards enable row level security;
 alter table public.posts enable row level security;
+alter table public.post_images enable row level security;
 alter table public.comments enable row level security;
 alter table public.post_amens enable row level security;
 
@@ -468,11 +501,29 @@ create policy posts_public_read_not_deleted
 on public.posts
 for select
 using (
+  status = 'published'
+  and
   deleted_at is null
   and exists (
     select 1
     from public.boards b
     where b.id = board_id
+      and b.is_active = true
+  )
+);
+
+drop policy if exists post_images_public_read on public.post_images;
+create policy post_images_public_read
+on public.post_images
+for select
+using (
+  exists (
+    select 1
+    from public.posts p
+    join public.boards b on b.id = p.board_id
+    where p.id = post_id
+      and p.status = 'published'
+      and p.deleted_at is null
       and b.is_active = true
   )
 );
@@ -489,6 +540,7 @@ using (
     from public.posts p
     join public.boards b on b.id = p.board_id
     where p.id = post_id
+      and p.status = 'published'
       and p.deleted_at is null
       and b.is_active = true
   )
@@ -504,6 +556,7 @@ using (
     from public.posts p
     join public.boards b on b.id = p.board_id
     where p.id = post_id
+      and p.status = 'published'
       and p.deleted_at is null
       and b.is_active = true
   )
@@ -515,16 +568,22 @@ using (
 comment on table public.users is '카카오 로그인 기반 사용자 테이블';
 comment on table public.boards is '게시판 마스터 테이블. prayer/sermon 등 확장 가능';
 comment on table public.posts is '게시글 테이블';
+comment on table public.post_images is '게시글 이미지 메타데이터 테이블';
 comment on table public.comments is '댓글 및 대댓글 테이블';
 comment on table public.post_amens is '게시글 아멘(좋아요) 이력';
 
 comment on column public.users.email is '카카오 로그인 시 이메일 기준 계정 식별용';
+comment on column public.posts.status is 'draft 또는 published';
+comment on column public.posts.published_at is '게시글이 공개된 시각';
 comment on column public.posts.is_anonymous is 'true면 UI에 작성자명을 익명으로 노출';
 comment on column public.comments.is_anonymous is 'true면 UI에 작성자명을 익명으로 노출';
 comment on column public.posts.is_pinned is '관리자 고정글 여부';
 comment on column public.posts.pinned_at is '고정글 정렬용 시간';
 comment on column public.posts.scripture_text is '주일 말씀 게시글에서 노출할 말씀 구절';
 comment on column public.posts.image_urls is '게시글에 첨부된 이미지 public URL 배열';
+comment on column public.post_images.object_path is 'Supabase Storage object path. legacy URL만 있는 데이터는 null일 수 있음';
+comment on column public.post_images.public_url is '클라이언트 노출용 public URL';
+comment on column public.post_images.sort_order is '이미지 노출 순서';
 comment on column public.posts.comment_count is '목록 조회 성능을 위한 캐시 컬럼';
 comment on column public.posts.amen_count is '아멘(좋아요) 수 캐시 컬럼';
 comment on column public.posts.view_count is '게시글 조회수';

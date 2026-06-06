@@ -1,19 +1,20 @@
 import { ImagePlus, X } from "lucide-react";
 import type { ChangeEvent } from "react";
 import type { LocalPostImageDraft } from "@/features/posts/images.client";
+import type { PostImageItem } from "@/features/posts/types";
 
 interface PostImagePickerProps {
-  existingImageUrls?: string[];
+  existingImages?: PostImageItem[];
   localImages: LocalPostImageDraft[];
   disabled?: boolean;
   maxCount: number;
   onAddFiles: (files: File[]) => void;
-  onRemoveExisting?: (index: number) => void;
+  onRemoveExisting?: (imageId: string) => void;
   onRemoveLocal: (id: string) => void;
 }
 
 export function PostImagePicker({
-  existingImageUrls = [],
+  existingImages = [],
   localImages,
   disabled = false,
   maxCount,
@@ -21,7 +22,7 @@ export function PostImagePicker({
   onRemoveExisting,
   onRemoveLocal,
 }: PostImagePickerProps) {
-  const totalCount = existingImageUrls.length + localImages.length;
+  const totalCount = existingImages.length + localImages.length;
 
   function onChangeFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -55,21 +56,21 @@ export function PostImagePicker({
         <p className="text-xs text-textSub">최대 {maxCount}장, 파일당 5MB까지 첨부할 수 있습니다.</p>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {existingImageUrls.map((imageUrl, index) => (
+          {existingImages.map((image, index) => (
             <div
-              key={`existing-${imageUrl}-${index}`}
+              key={image.id}
               className="relative overflow-hidden rounded-2xl border border-surface bg-white"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={imageUrl}
+                src={image.publicUrl}
                 alt={`첨부 이미지 ${index + 1}`}
                 className="block h-32 w-full object-cover"
               />
               {onRemoveExisting ? (
                 <button
                   type="button"
-                  onClick={() => onRemoveExisting(index)}
+                  onClick={() => onRemoveExisting(image.id)}
                   disabled={disabled}
                   className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white"
                   aria-label="기존 이미지 제거"

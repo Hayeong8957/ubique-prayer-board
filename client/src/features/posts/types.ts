@@ -1,4 +1,11 @@
 export type BoardCode = "prayer" | "sermon";
+export type PostStatus = "draft" | "published";
+
+export interface PostImageItem {
+  id: string;
+  publicUrl: string;
+  sortOrder: number;
+}
 
 export interface PostListItem {
   id: string;
@@ -23,6 +30,8 @@ export interface PostDetail {
   scriptureText: string | null;
   content: string;
   imageUrls: string[];
+  images: PostImageItem[];
+  status: PostStatus;
   isAnonymous: boolean;
   isPinned: boolean;
   commentCount: number;
@@ -38,7 +47,7 @@ export interface UpdatePostInput {
   title?: string;
   scriptureText?: string | null;
   content: string;
-  imageUrls?: string[];
+  imageIds?: string[];
   isAnonymous?: boolean;
 }
 
@@ -64,7 +73,6 @@ export interface CreatePostInput {
   title?: string;
   scriptureText?: string | null;
   content: string;
-  imageUrls?: string[];
   isAnonymous: boolean;
   authorUserId: string;
 }

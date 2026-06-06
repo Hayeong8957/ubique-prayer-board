@@ -72,6 +72,10 @@ function getDetailPath(boardCode: BoardCode, postId: string) {
   return boardCode === "prayer" ? `/prayers/${postId}` : `/sermons/${postId}`;
 }
 
+function getCommentsPath(boardCode: BoardCode, postId: string) {
+  return `${getDetailPath(boardCode, postId)}#comments`;
+}
+
 export default function Home() {
   const router = useRouter();
   const { status, data: session } = useSession();
@@ -541,7 +545,10 @@ export default function Home() {
                   size="sm"
                   variant="ghost"
                   className="w-full justify-center gap-1"
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    router.push(getCommentsPath(selectedBoard, post.id));
+                  }}
                 >
                   <MessageCircle className="h-4 w-4" />
                   댓글 {post.commentCount}

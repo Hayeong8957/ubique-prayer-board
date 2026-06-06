@@ -48,9 +48,9 @@ export default async function handler(
     const title = typeof req.body?.title === "string" ? req.body.title : "";
     const scriptureText =
       typeof req.body?.scriptureText === "string" ? req.body.scriptureText : "";
-    const imageUrls = Array.isArray(req.body?.imageUrls)
-      ? req.body.imageUrls.filter((value: unknown): value is string => typeof value === "string")
-      : [];
+    const imageIds = Array.isArray(req.body?.imageIds)
+      ? req.body.imageIds.filter((value: unknown): value is string => typeof value === "string")
+      : undefined;
     const isAnonymous =
       typeof req.body?.isAnonymous === "boolean" ? req.body.isAnonymous : undefined;
 
@@ -61,7 +61,7 @@ export default async function handler(
         title,
         scriptureText,
         content,
-        imageUrls,
+        imageIds,
         isAnonymous,
       });
       return res.status(200).json({ ok: true, data: { id: postId } });
@@ -73,7 +73,10 @@ export default async function handler(
       if (message === "POST_NOT_FOUND") {
         return res.status(404).json({ ok: false, error: "Post not found" });
       }
-      if (/required/i.test(message)) {
+      if (message === "INVALID_IMAGE_IDS") {
+        return res.status(400).json({ ok: false, error: "유효하지 않은 이미지 요청입니다." });
+      }
+      if (/required/i.test(message) || /limit/i.test(message)) {
         return res.status(400).json({ ok: false, error: message });
       }
       return res.status(500).json({ ok: false, error: message });

@@ -8,7 +8,13 @@ export interface LocalPostImageDraft {
   previewUrl: string;
 }
 
-type UploadResponse = { ok: true; data: { url: string } } | { ok: false; error: string };
+export interface UploadedPostImage {
+  id: string;
+  publicUrl: string;
+  sortOrder: number;
+}
+
+type UploadResponse = { ok: true; data: UploadedPostImage } | { ok: false; error: string };
 
 export function validatePostImageFile(file: File) {
   if (!POST_IMAGE_ALLOWED_TYPES.includes(file.type)) {
@@ -32,33 +38,16 @@ export function revokeLocalPostImageDraft(draft: LocalPostImageDraft) {
   URL.revokeObjectURL(draft.previewUrl);
 }
 
-export async function fileToDataUrl(file: File) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("이미지 파일을 읽지 못했습니다."));
-    };
-    reader.onerror = () => reject(new Error("이미지 파일을 읽지 못했습니다."));
-    reader.readAsDataURL(file);
-  });
-}
-
-export async function uploadPostImages(files: File[]) {
-  const uploadedUrls: string[] = [];
+export async function uploadPostImages(postId: string, files: File[]) {
+  const uploadedImages: UploadedPostImage[] = [];
 
   for (const file of files) {
-    const dataUrl = await fileToDataUrl(file);
-    const response = await fetch("/api/uploads/post-images", {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`/api/posts/${postId}/images`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dataUrl,
-        fileName: file.name,
-      }),
+      body: formData,
     });
 
     const payload = (await response.json()) as UploadResponse;
@@ -66,8 +55,8 @@ export async function uploadPostImages(files: File[]) {
       throw new Error(payload.ok ? "이미지 업로드 중 오류가 발생했습니다." : payload.error);
     }
 
-    uploadedUrls.push(payload.data.url);
+    uploadedImages.push(payload.data);
   }
 
-  return uploadedUrls;
+  return uploadedImages;
 }
