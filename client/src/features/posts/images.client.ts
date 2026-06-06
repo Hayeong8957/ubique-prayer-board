@@ -6,6 +6,7 @@ export interface LocalPostImageDraft {
   id: string;
   file: File;
   previewUrl: string;
+  status: "uploading" | "failed";
 }
 
 export interface UploadedPostImage {
@@ -15,6 +16,7 @@ export interface UploadedPostImage {
 }
 
 type UploadResponse = { ok: true; data: UploadedPostImage } | { ok: false; error: string };
+type DeleteResponse = { ok: true; data: { id: string } } | { ok: false; error: string };
 
 export function validatePostImageFile(file: File) {
   if (!POST_IMAGE_ALLOWED_TYPES.includes(file.type)) {
@@ -31,6 +33,7 @@ export function createLocalPostImageDraft(file: File): LocalPostImageDraft {
     id: crypto.randomUUID(),
     file,
     previewUrl: URL.createObjectURL(file),
+    status: "uploading",
   };
 }
 
@@ -38,25 +41,32 @@ export function revokeLocalPostImageDraft(draft: LocalPostImageDraft) {
   URL.revokeObjectURL(draft.previewUrl);
 }
 
-export async function uploadPostImages(postId: string, files: File[]) {
-  const uploadedImages: UploadedPostImage[] = [];
+export async function uploadPostImage(postId: string, file: File, signal?: AbortSignal) {
+  const formData = new FormData();
+  formData.append("file", file);
 
-  for (const file of files) {
-    const formData = new FormData();
-    formData.append("file", file);
+  const response = await fetch(`/api/posts/${postId}/images`, {
+    method: "POST",
+    body: formData,
+    signal,
+  });
 
-    const response = await fetch(`/api/posts/${postId}/images`, {
-      method: "POST",
-      body: formData,
-    });
-
-    const payload = (await response.json()) as UploadResponse;
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.ok ? "이미지 업로드 중 오류가 발생했습니다." : payload.error);
-    }
-
-    uploadedImages.push(payload.data);
+  const payload = (await response.json()) as UploadResponse;
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.ok ? "이미지 업로드 중 오류가 발생했습니다." : payload.error);
   }
 
-  return uploadedImages;
+  return payload.data;
+}
+
+export async function deletePostImage(postId: string, imageId: string) {
+  const response = await fetch(`/api/posts/${postId}/images/${imageId}`, {
+    method: "DELETE",
+  });
+  const payload = (await response.json()) as DeleteResponse;
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.ok ? "이미지 삭제 중 오류가 발생했습니다." : payload.error);
+  }
+
+  return payload.data;
 }
