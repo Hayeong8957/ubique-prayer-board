@@ -11,9 +11,10 @@ import { Card } from "@/components/ui/Card";
 import { ScrollToTopButton } from "@/components/ui/ScrollToTopButton";
 import {
   createLocalPostImageDraft,
+  deletePostImage,
   POST_IMAGE_MAX_COUNT,
   revokeLocalPostImageDraft,
-  uploadPostImages,
+  uploadPostImage,
   validatePostImageFile,
   type LocalPostImageDraft,
   type UploadedPostImage,
@@ -64,6 +65,8 @@ export default function SermonDetailPage({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const localImagesRef = useRef<LocalPostImageDraft[]>([]);
+  const initialUploadedImageIdsRef = useRef(new Set((post?.images ?? []).map((image) => image.id)));
+  const uploadControllersRef = useRef<Record<string, AbortController>>({});
 
   useEffect(() => {
     localImagesRef.current = localImages;
@@ -71,13 +74,16 @@ export default function SermonDetailPage({
 
   useEffect(() => {
     return () => {
+      Object.values(uploadControllersRef.current).forEach((controller) => controller.abort());
       for (const image of localImagesRef.current) {
         revokeLocalPostImageDraft(image);
       }
     };
   }, []);
 
-  function onAddFiles(files: File[]) {
+  const isUploadingImages = localImages.some((image) => image.status === "uploading");
+
+  async function onAddFiles(files: File[]) {
     const nextDrafts: LocalPostImageDraft[] = [];
     const totalCount = uploadedImages.length + localImages.length;
 
@@ -99,10 +105,43 @@ export default function SermonDetailPage({
     if (nextDrafts.length > 0) {
       setSubmitError(null);
       setLocalImages((prev) => [...prev, ...nextDrafts]);
+      nextDrafts.forEach((draft) => {
+        const controller = new AbortController();
+        uploadControllersRef.current[draft.id] = controller;
+
+        void uploadPostImage(postId, draft.file, controller.signal)
+          .then((uploaded) => {
+            setUploadedImages((prev) => [...prev, uploaded]);
+            setLocalImages((prev) => prev.filter((image) => image.id !== draft.id));
+            revokeLocalPostImageDraft(draft);
+          })
+          .catch((e) => {
+            if (e instanceof DOMException && e.name === "AbortError") {
+              return;
+            }
+            if (e instanceof Error && e.message === "This operation was aborted") {
+              return;
+            }
+            setSubmitError(e instanceof Error ? e.message : "이미지 업로드 중 오류가 발생했습니다.");
+            setLocalImages((prev) =>
+              prev.map((image) =>
+                image.id === draft.id ? { ...image, status: "failed" } : image
+              )
+            );
+          })
+          .finally(() => {
+            delete uploadControllersRef.current[draft.id];
+          });
+      });
     }
   }
 
   function onRemoveLocalImage(id: string) {
+    const controller = uploadControllersRef.current[id];
+    if (controller) {
+      controller.abort();
+      delete uploadControllersRef.current[id];
+    }
     setLocalImages((prev) => {
       const target = prev.find((image) => image.id === id);
       if (target) revokeLocalPostImageDraft(target);
@@ -144,14 +183,6 @@ export default function SermonDetailPage({
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      let nextUploadedImages = uploadedImages;
-      if (localImages.length > 0) {
-        const uploaded = await uploadPostImages(
-          postId,
-          localImages.map((image) => image.file)
-        );
-        nextUploadedImages = [...uploadedImages, ...uploaded];
-      }
       const response = await fetch(`/api/posts/${postId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -159,7 +190,7 @@ export default function SermonDetailPage({
           title,
           scriptureText,
           content,
-          imageIds: nextUploadedImages.map((image) => image.id),
+          imageIds: uploadedImages.map((image) => image.id),
         }),
       });
       const payload = (await response.json()) as UpdatePostResponse;
@@ -167,11 +198,6 @@ export default function SermonDetailPage({
         setSubmitError(payload.ok ? "수정 중 오류가 발생했습니다." : payload.error);
         return;
       }
-      setUploadedImages(nextUploadedImages);
-      setLocalImages((prev) => {
-        for (const image of prev) revokeLocalPostImageDraft(image);
-        return [];
-      });
       setIsEditing(false);
       await router.replace(router.asPath);
     } catch (e) {
@@ -242,11 +268,22 @@ export default function SermonDetailPage({
                 existingImages={uploadedImages}
                 localImages={localImages}
                 maxCount={POST_IMAGE_MAX_COUNT}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploadingImages}
                 onAddFiles={onAddFiles}
-                onRemoveExisting={(imageId) =>
-                  setUploadedImages((prev) => prev.filter((image) => image.id !== imageId))
-                }
+                onRemoveExisting={async (imageId) => {
+                  const isInitialImage = initialUploadedImageIdsRef.current.has(imageId);
+                  if (isInitialImage) {
+                    setUploadedImages((prev) => prev.filter((image) => image.id !== imageId));
+                    return;
+                  }
+
+                  try {
+                    await deletePostImage(postId, imageId);
+                    setUploadedImages((prev) => prev.filter((image) => image.id !== imageId));
+                  } catch (e) {
+                    setSubmitError(e instanceof Error ? e.message : "이미지 삭제 중 오류가 발생했습니다.");
+                  }
+                }}
                 onRemoveLocal={onRemoveLocalImage}
               />
             </>
@@ -260,6 +297,9 @@ export default function SermonDetailPage({
               <p className="mb-4 whitespace-pre-wrap text-[15px] text-textMain">{post.content}</p>
             </>
           )}
+          {isUploadingImages ? (
+            <p className="mb-3 text-sm text-textSub">이미지 업로드 중입니다...</p>
+          ) : null}
           {submitError ? <p className="mb-3 text-sm text-red-600">{submitError}</p> : null}
           <div className="flex items-center justify-between gap-3">
             <Button size="sm" variant={post.hasAmened ? "secondary" : "ghost"}>
@@ -269,7 +309,7 @@ export default function SermonDetailPage({
               <div className="flex items-center gap-2">
                 {isEditing ? (
                   <>
-                    <Button size="sm" onClick={onSave} disabled={isSubmitting}>
+                    <Button size="sm" onClick={onSave} disabled={isSubmitting || isUploadingImages}>
                       {isSubmitting ? "저장 중..." : "저장"}
                     </Button>
                     <Button
@@ -286,6 +326,7 @@ export default function SermonDetailPage({
                             sortOrder: image.sortOrder,
                           }))
                         );
+                        initialUploadedImageIdsRef.current = new Set(post.images.map((image) => image.id));
                         setSubmitError(null);
                         setIsEditing(false);
                         setLocalImages((prev) => {

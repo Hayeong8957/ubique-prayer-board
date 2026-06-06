@@ -707,6 +707,63 @@ export async function attachImageToPost(input: {
   return mapPostImage(data);
 }
 
+export async function detachImageFromPost(input: {
+  postId: string;
+  imageId: string;
+  authorUserId: string;
+}) {
+  const post = await getEditablePostById(input.postId);
+  if (!post || !post.board) {
+    throw new Error("POST_NOT_FOUND");
+  }
+  if (post.author_user_id !== input.authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const existingImageRows = await listEditablePostImageRows(input.postId);
+  const targetImage = existingImageRows.find((image) => image.id === input.imageId);
+  if (!targetImage) {
+    throw new Error("IMAGE_NOT_FOUND");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { error } = await supabaseAdmin
+    .from("post_images")
+    .delete()
+    .eq("id", input.imageId)
+    .eq("post_id", input.postId);
+
+  if (error) {
+    throw new Error(`Failed to delete image: ${error.message}`);
+  }
+
+  if (targetImage.object_path) {
+    await removePostImageObjects([targetImage.object_path]);
+  }
+
+  const remainingImages = existingImageRows.filter((image) => image.id !== input.imageId);
+  await Promise.all(
+    remainingImages.map((image, index) =>
+      supabaseAdmin
+        .from("post_images")
+        .update({ sort_order: index })
+        .eq("id", image.id)
+        .eq("post_id", input.postId)
+    )
+  );
+
+  const { error: syncError } = await supabaseAdmin
+    .from("posts")
+    .update({
+      image_urls: remainingImages.map((image) => image.public_url),
+    })
+    .eq("id", input.postId);
+
+  if (syncError) {
+    throw new Error(`Failed to sync post images: ${syncError.message}`);
+  }
+}
+
 export async function updatePostById(input: UpdatePostInput) {
   const post = await getEditablePostById(input.postId);
   if (!post || !post.board) {
@@ -819,6 +876,26 @@ export async function softDeletePostById(postId: string, authorUserId: string) {
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+  if (post.status === "draft") {
+    const draftImages = await listEditablePostImageRows(postId);
+    const { error: deleteError } = await supabaseAdmin
+      .from("posts")
+      .delete()
+      .eq("id", postId)
+      .eq("author_user_id", authorUserId);
+
+    if (deleteError) {
+      throw new Error(`Failed to discard draft: ${deleteError.message}`);
+    }
+
+    await removePostImageObjects(
+      draftImages
+        .map((image) => image.object_path)
+        .filter((value): value is string => Boolean(value))
+    );
+    return;
+  }
+
   const { error } = await supabaseAdmin
     .from("posts")
     .update({

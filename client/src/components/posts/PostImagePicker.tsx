@@ -8,7 +8,7 @@ interface PostImagePickerProps {
   localImages: LocalPostImageDraft[];
   disabled?: boolean;
   maxCount: number;
-  onAddFiles: (files: File[]) => void;
+  onAddFiles: (files: File[]) => void | Promise<void>;
   onRemoveExisting?: (imageId: string) => void;
   onRemoveLocal: (id: string) => void;
 }
@@ -27,7 +27,7 @@ export function PostImagePicker({
   function onChangeFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (files.length > 0) {
-      onAddFiles(files);
+      void onAddFiles(files);
     }
     event.target.value = "";
   }
@@ -92,6 +92,9 @@ export function PostImagePicker({
                 alt={image.file.name}
                 className="block h-32 w-full object-cover"
               />
+              <div className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-center text-xs font-medium text-white">
+                {image.status === "uploading" ? "업로드 중..." : "업로드 실패"}
+              </div>
               <button
                 type="button"
                 onClick={() => onRemoveLocal(image.id)}

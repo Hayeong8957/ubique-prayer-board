@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
   createLocalPostImageDraft,
+  deletePostImage,
   POST_IMAGE_MAX_COUNT,
   revokeLocalPostImageDraft,
-  uploadPostImages,
+  uploadPostImage,
   validatePostImageFile,
   type LocalPostImageDraft,
   type UploadedPostImage,
@@ -32,20 +33,53 @@ export default function NewSermonPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const localImagesRef = useRef<LocalPostImageDraft[]>([]);
+  const uploadControllersRef = useRef<Record<string, AbortController>>({});
+  const draftIdRef = useRef<string | null>(null);
+  const didPublishRef = useRef(false);
+  const cleanupRequestedRef = useRef(false);
 
   useEffect(() => {
     localImagesRef.current = localImages;
   }, [localImages]);
 
   useEffect(() => {
+    draftIdRef.current = draftId;
+  }, [draftId]);
+
+  function requestDraftCleanup() {
+    if (didPublishRef.current || cleanupRequestedRef.current) return;
+    const currentDraftId = draftIdRef.current;
+    if (!currentDraftId) return;
+
+    cleanupRequestedRef.current = true;
+    Object.values(uploadControllersRef.current).forEach((controller) => controller.abort());
+    void fetch(`/api/posts/${currentDraftId}`, {
+      method: "DELETE",
+      keepalive: true,
+    }).catch(() => {
+      cleanupRequestedRef.current = false;
+    });
+  }
+
+  useEffect(() => {
+    const onPageHide = () => {
+      requestDraftCleanup();
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      requestDraftCleanup();
+      Object.values(uploadControllersRef.current).forEach((controller) => controller.abort());
       for (const image of localImagesRef.current) {
         revokeLocalPostImageDraft(image);
       }
     };
   }, []);
 
-  function onAddFiles(files: File[]) {
+  const isUploadingImages = localImages.some((image) => image.status === "uploading");
+
+  async function onAddFiles(files: File[]) {
     const nextDrafts: LocalPostImageDraft[] = [];
     const totalCount = uploadedImages.length + localImages.length;
 
@@ -67,10 +101,53 @@ export default function NewSermonPage() {
     if (nextDrafts.length > 0) {
       setError(null);
       setLocalImages((prev) => [...prev, ...nextDrafts]);
+      try {
+        const nextDraftId = await ensureDraftId();
+        nextDrafts.forEach((draft) => {
+          const controller = new AbortController();
+          uploadControllersRef.current[draft.id] = controller;
+
+          void uploadPostImage(nextDraftId, draft.file, controller.signal)
+            .then((uploaded) => {
+              setUploadedImages((prev) => [...prev, uploaded]);
+              setLocalImages((prev) => prev.filter((image) => image.id !== draft.id));
+              revokeLocalPostImageDraft(draft);
+            })
+            .catch((e) => {
+              if (e instanceof DOMException && e.name === "AbortError") {
+                return;
+              }
+              if (e instanceof Error && e.message === "This operation was aborted") {
+                return;
+              }
+              setError(e instanceof Error ? e.message : "이미지 업로드 중 오류가 발생했습니다.");
+              setLocalImages((prev) =>
+                prev.map((image) =>
+                  image.id === draft.id ? { ...image, status: "failed" } : image
+                )
+              );
+            })
+            .finally(() => {
+              delete uploadControllersRef.current[draft.id];
+            });
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "이미지 업로드 중 오류가 발생했습니다.");
+        setLocalImages((prev) =>
+          prev.map((image) =>
+            nextDrafts.some((draft) => draft.id === image.id) ? { ...image, status: "failed" } : image
+          )
+        );
+      }
     }
   }
 
   function onRemoveLocalImage(id: string) {
+    const controller = uploadControllersRef.current[id];
+    if (controller) {
+      controller.abort();
+      delete uploadControllersRef.current[id];
+    }
     setLocalImages((prev) => {
       const target = prev.find((image) => image.id === id);
       if (target) revokeLocalPostImageDraft(target);
@@ -114,15 +191,6 @@ export default function NewSermonPage() {
 
     try {
       const nextDraftId = await ensureDraftId();
-      let nextUploadedImages = uploadedImages;
-
-      if (localImages.length > 0) {
-        const uploaded = await uploadPostImages(
-          nextDraftId,
-          localImages.map((image) => image.file)
-        );
-        nextUploadedImages = [...uploadedImages, ...uploaded];
-      }
 
       const response = await fetch(`/api/posts/${nextDraftId}`, {
         method: "PUT",
@@ -131,7 +199,7 @@ export default function NewSermonPage() {
           title,
           scriptureText,
           content,
-          imageIds: nextUploadedImages.map((image) => image.id),
+          imageIds: uploadedImages.map((image) => image.id),
         }),
       });
 
@@ -141,11 +209,7 @@ export default function NewSermonPage() {
         return;
       }
 
-      setUploadedImages(nextUploadedImages);
-      setLocalImages((prev) => {
-        for (const image of prev) revokeLocalPostImageDraft(image);
-        return [];
-      });
+      didPublishRef.current = true;
       await router.push(`/sermons/${payload.data.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
@@ -193,19 +257,31 @@ export default function NewSermonPage() {
               existingImages={uploadedImages}
               localImages={localImages}
               maxCount={POST_IMAGE_MAX_COUNT}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImages}
               onAddFiles={onAddFiles}
-              onRemoveExisting={(imageId) =>
-                setUploadedImages((prev) => prev.filter((image) => image.id !== imageId))
-              }
+              onRemoveExisting={async (imageId) => {
+                if (!draftId) {
+                  setUploadedImages((prev) => prev.filter((image) => image.id !== imageId));
+                  return;
+                }
+                try {
+                  await deletePostImage(draftId, imageId);
+                  setUploadedImages((prev) => prev.filter((image) => image.id !== imageId));
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "이미지 삭제 중 오류가 발생했습니다.");
+                }
+              }}
               onRemoveLocal={onRemoveLocalImage}
             />
           </div>
 
+          {isUploadingImages ? (
+            <p className="mt-3 text-sm text-textSub">이미지 업로드 중입니다...</p>
+          ) : null}
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
           <div className="mt-4 flex justify-end">
-            <Button onClick={onSubmit} disabled={isSubmitting}>
+            <Button onClick={onSubmit} disabled={isSubmitting || isUploadingImages}>
               {isSubmitting ? "등록 중..." : "등록하기"}
             </Button>
           </div>
