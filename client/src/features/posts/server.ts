@@ -1,10 +1,12 @@
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { POST_IMAGES_BUCKET } from "@/features/posts/images.server";
 import type {
   BoardCode,
   CommentItem,
   CommentPagination,
   CreatePostInput,
   PostDetail,
+  PostImageItem,
   PostListItem,
   UpdatePostInput,
 } from "@/features/posts/types";
@@ -18,6 +20,8 @@ type PostRow = {
   scripture_text: string | null;
   content: string | null;
   image_urls: string[] | null;
+  status: "draft" | "published";
+  published_at: string | null;
   is_anonymous: boolean;
   is_pinned: boolean;
   comment_count: number;
@@ -29,8 +33,21 @@ type PostDetailRow = PostRow & { board: { code: BoardCode } | null };
 type EditablePostRow = {
   id: string;
   author_user_id: string;
+  status: "draft" | "published";
+  published_at: string | null;
   board: { code: BoardCode } | null;
 };
+type PostImageRow = {
+  id: string;
+  post_id: string;
+  object_path: string | null;
+  public_url: string;
+  sort_order: number;
+};
+type InsertedPostRow = { id: string };
+type DraftPostRow = { id: string };
+type AmenStateRow = { post_id: string };
+type AmenCountRow = { amen_count: number };
 type CommentRow = {
   id: string;
   post_id: string;
@@ -54,13 +71,83 @@ type EditableCommentRow = {
   post_id: string;
   author_user_id: string;
 };
-type InsertedPostRow = { id: string };
-type AmenStateRow = { post_id: string };
-type AmenCountRow = { amen_count: number };
+
 const MAX_POST_IMAGE_COUNT = 4;
 
-function normalizeImageUrls(imageUrls?: string[]) {
-  return (imageUrls ?? []).filter(Boolean).slice(0, MAX_POST_IMAGE_COUNT);
+function createTitleFromContent(content: string) {
+  const compact = content.replace(/\s+/g, " ").trim();
+  if (!compact) return "기도제목";
+  return compact.length > 30 ? `${compact.slice(0, 30)}...` : compact;
+}
+
+function mapPostImage(image: PostImageRow): PostImageItem {
+  return {
+    id: image.id,
+    publicUrl: image.public_url,
+    sortOrder: image.sort_order,
+  };
+}
+
+function mergeImageUrls(images: PostImageItem[], legacyImageUrls: string[] | null | undefined) {
+  if (images.length > 0) {
+    return images.map((image) => image.publicUrl);
+  }
+  return (legacyImageUrls ?? []).filter(Boolean);
+}
+
+function uniqueImageIds(imageIds: string[] | undefined) {
+  if (!imageIds) return undefined;
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const imageId of imageIds) {
+    if (!imageId || seen.has(imageId)) continue;
+    ids.push(imageId);
+    seen.add(imageId);
+  }
+  return ids;
+}
+
+async function listPostImageRowsByPostIds(postIds: string[]) {
+  if (postIds.length === 0) return new Map<string, PostImageRow[]>();
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("post_images")
+    .select("id,post_id,object_path,public_url,sort_order")
+    .in("post_id", postIds)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .returns<PostImageRow[]>();
+
+  if (error) {
+    throw new Error(`Failed to load post images: ${error.message}`);
+  }
+
+  const rowsByPostId = new Map<string, PostImageRow[]>();
+  for (const row of data ?? []) {
+    const existing = rowsByPostId.get(row.post_id) ?? [];
+    existing.push(row);
+    rowsByPostId.set(row.post_id, existing);
+  }
+  return rowsByPostId;
+}
+
+async function listPostImagesByPostId(postId: string) {
+  const rowsByPostId = await listPostImageRowsByPostIds([postId]);
+  return (rowsByPostId.get(postId) ?? []).map(mapPostImage);
+}
+
+async function listEditablePostImageRows(postId: string) {
+  const rowsByPostId = await listPostImageRowsByPostIds([postId]);
+  return rowsByPostId.get(postId) ?? [];
+}
+
+async function removePostImageObjects(objectPaths: string[]) {
+  const paths = objectPaths.filter(Boolean);
+  if (paths.length === 0) return;
+
+  const supabaseAdmin = getSupabaseAdmin();
+  await supabaseAdmin.storage.from(POST_IMAGES_BUCKET).remove(paths);
 }
 
 export async function getBoardByCode(boardCode: BoardCode) {
@@ -102,13 +189,14 @@ export async function listPostsByBoardCodePaginated(
 
   const listSelectColumns =
     boardCode === "sermon"
-      ? "id,board_id,author_user_id,title,scripture_text,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+      ? "id,board_id,author_user_id,title,scripture_text,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(listSelectColumns)
     .eq("board_id", board.id)
+    .eq("status", "published")
     .is("deleted_at", null)
     .order("is_pinned", { ascending: false })
     .order("pinned_at", { ascending: false, nullsFirst: false })
@@ -120,8 +208,10 @@ export async function listPostsByBoardCodePaginated(
     throw new Error(`Failed to load posts: ${error.message}`);
   }
 
-  const items = data ?? [];
-  const postIds = items.map((post) => post.id);
+  const rows = data ?? [];
+  const visibleRows = rows.slice(0, safePageSize);
+  const postIds = visibleRows.map((post) => post.id);
+  const imageRowsByPostId = await listPostImageRowsByPostIds(postIds);
   const amenedPostIdSet = new Set<string>();
 
   if (viewerUserId && postIds.length > 0) {
@@ -135,27 +225,30 @@ export async function listPostsByBoardCodePaginated(
     if (amenError) {
       throw new Error(`Failed to load amen states: ${amenError.message}`);
     }
-    for (const row of amenRows ?? []) amenedPostIdSet.add(row.post_id);
+    for (const row of amenRows ?? []) {
+      amenedPostIdSet.add(row.post_id);
+    }
   }
 
-  const mapped = items.map((post) => ({
-    id: post.id,
-    title: post.title,
-    scriptureText: post.scripture_text,
-    content: post.content ?? "",
-    imageUrls: post.image_urls ?? [],
-    isAnonymous: post.is_anonymous,
-    isPinned: post.is_pinned,
-    commentCount: post.comment_count,
-    amenCount: post.amen_count,
-    hasAmened: amenedPostIdSet.has(post.id),
-    createdAt: post.created_at,
-    authorName: post.author?.name ?? "알 수 없음",
-  }));
-
   return {
-    items: mapped.slice(0, safePageSize),
-    hasMore: mapped.length > safePageSize,
+    items: visibleRows.map((post) => {
+      const images = (imageRowsByPostId.get(post.id) ?? []).map(mapPostImage);
+      return {
+        id: post.id,
+        title: post.title,
+        scriptureText: post.scripture_text,
+        content: post.content ?? "",
+        imageUrls: mergeImageUrls(images, post.image_urls),
+        isAnonymous: post.is_anonymous,
+        isPinned: post.is_pinned,
+        commentCount: post.comment_count,
+        amenCount: post.amen_count,
+        hasAmened: amenedPostIdSet.has(post.id),
+        createdAt: post.created_at,
+        authorName: post.author?.name ?? "알 수 없음",
+      };
+    }),
+    hasMore: rows.length > safePageSize,
   };
 }
 
@@ -169,14 +262,15 @@ export async function listPostsByAuthorAndBoardCode(
   const supabaseAdmin = getSupabaseAdmin();
   const listSelectColumns =
     boardCode === "sermon"
-      ? "id,board_id,author_user_id,title,scripture_text,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
-      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
+      ? "id,board_id,author_user_id,title,scripture_text,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
+      : "id,board_id,author_user_id,title,scripture_text,content,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
   const { data, error } = await supabaseAdmin
     .from("posts")
     .select(listSelectColumns)
     .eq("author_user_id", authorUserId)
     .eq("board_id", board.id)
+    .eq("status", "published")
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(100)
@@ -186,33 +280,43 @@ export async function listPostsByAuthorAndBoardCode(
     throw new Error(`Failed to load my posts: ${error.message}`);
   }
 
-  return (data ?? []).map((post) => ({
-    id: post.id,
-    title: post.title,
-    scriptureText: post.scripture_text,
-    content: post.content ?? "",
-    imageUrls: post.image_urls ?? [],
-    isAnonymous: post.is_anonymous,
-    isPinned: post.is_pinned,
-    commentCount: post.comment_count,
-    amenCount: post.amen_count,
-    hasAmened: false,
-    createdAt: post.created_at,
-    authorName: post.author?.name ?? "알 수 없음",
-  }));
+  const rows = data ?? [];
+  const imageRowsByPostId = await listPostImageRowsByPostIds(rows.map((post) => post.id));
+
+  return rows.map((post) => {
+    const images = (imageRowsByPostId.get(post.id) ?? []).map(mapPostImage);
+    return {
+      id: post.id,
+      title: post.title,
+      scriptureText: post.scripture_text,
+      content: post.content ?? "",
+      imageUrls: mergeImageUrls(images, post.image_urls),
+      isAnonymous: post.is_anonymous,
+      isPinned: post.is_pinned,
+      commentCount: post.comment_count,
+      amenCount: post.amen_count,
+      hasAmened: false,
+      createdAt: post.created_at,
+      authorName: post.author?.name ?? "알 수 없음",
+    };
+  });
 }
 
-export async function getPostById(postId: string, viewerUserId?: string | null): Promise<PostDetail | null> {
+export async function getPostById(
+  postId: string,
+  viewerUserId?: string | null
+): Promise<PostDetail | null> {
   const supabaseAdmin = getSupabaseAdmin();
   const postPromise = supabaseAdmin
     .from("posts")
     .select(
-      "id,board_id,author_user_id,title,scripture_text,content,image_urls,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
+      "id,board_id,author_user_id,title,scripture_text,content,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name),board:boards!posts_board_id_fkey(code)"
     )
     .eq("id", postId)
+    .eq("status", "published")
     .is("deleted_at", null)
     .maybeSingle<PostDetailRow>();
-
+  const imagesPromise = listPostImagesByPostId(postId);
   const amenPromise = viewerUserId
     ? supabaseAdmin
         .from("post_amens")
@@ -222,13 +326,13 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
         .maybeSingle<AmenStateRow>()
     : null;
 
-  const [postResult, amenResult] = await Promise.all([
+  const [postResult, images, amenResult] = await Promise.all([
     postPromise,
+    imagesPromise,
     amenPromise ?? Promise.resolve({ data: null, error: null }),
   ]);
 
   const { data, error } = postResult;
-
   if (error) {
     throw new Error(`Failed to load post: ${error.message}`);
   }
@@ -238,7 +342,6 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
   if (amenError) {
     throw new Error(`Failed to load amen state: ${amenError.message}`);
   }
-  const hasAmened = Boolean(amenResult?.data);
 
   return {
     id: data.id,
@@ -247,12 +350,14 @@ export async function getPostById(postId: string, viewerUserId?: string | null):
     title: data.title,
     scriptureText: data.scripture_text,
     content: data.content ?? "",
-    imageUrls: data.image_urls ?? [],
+    imageUrls: mergeImageUrls(images, data.image_urls),
+    images,
+    status: data.status,
     isAnonymous: data.is_anonymous,
     isPinned: data.is_pinned,
     commentCount: data.comment_count,
     amenCount: data.amen_count,
-    hasAmened,
+    hasAmened: Boolean(amenResult?.data),
     createdAt: data.created_at,
     authorName: data.author?.name ?? "알 수 없음",
   };
@@ -317,6 +422,7 @@ async function ensureVisiblePost(postId: string) {
     .from("posts")
     .select("id")
     .eq("id", postId)
+    .eq("status", "published")
     .is("deleted_at", null)
     .maybeSingle<{ id: string }>();
 
@@ -454,10 +560,38 @@ export async function listCommentsByPostId(postId: string): Promise<CommentItem[
   return result.items;
 }
 
-function createTitleFromContent(content: string) {
-  const compact = content.replace(/\s+/g, " ").trim();
-  if (!compact) return "기도제목";
-  return compact.length > 30 ? `${compact.slice(0, 30)}...` : compact;
+export async function createDraftPost(input: {
+  boardCode: BoardCode;
+  authorUserId: string;
+}): Promise<string> {
+  const board = await getBoardByCode(input.boardCode);
+  if (!board) {
+    throw new Error("Board not found");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data, error } = await supabaseAdmin
+    .from("posts")
+    .insert({
+      board_id: board.id,
+      title: input.boardCode === "sermon" ? "" : "기도제목",
+      scripture_text: null,
+      content: "",
+      image_urls: [],
+      author_user_id: input.authorUserId,
+      is_anonymous: input.boardCode === "prayer",
+      status: "draft",
+      published_at: null,
+      amen_count: 0,
+    })
+    .select("id")
+    .single<DraftPostRow>();
+
+  if (error || !data) {
+    throw new Error(`Failed to create draft: ${error?.message ?? "unknown error"}`);
+  }
+
+  return data.id;
 }
 
 export async function createPost(input: CreatePostInput): Promise<string> {
@@ -473,7 +607,6 @@ export async function createPost(input: CreatePostInput): Promise<string> {
 
   const scriptureText = (input.scriptureText ?? "").trim();
   const titleInput = (input.title ?? "").trim();
-  const imageUrls = normalizeImageUrls(input.imageUrls);
   const title =
     input.boardCode === "sermon"
       ? titleInput
@@ -485,6 +618,7 @@ export async function createPost(input: CreatePostInput): Promise<string> {
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+  const publishedAt = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from("posts")
     .insert({
@@ -492,9 +626,11 @@ export async function createPost(input: CreatePostInput): Promise<string> {
       title,
       scripture_text: scriptureText || null,
       content,
-      image_urls: imageUrls,
+      image_urls: [],
       author_user_id: input.authorUserId,
-      is_anonymous: input.isAnonymous,
+      is_anonymous: input.boardCode === "prayer" ? input.isAnonymous : false,
+      status: "published",
+      published_at: publishedAt,
       amen_count: 0,
     })
     .select("id")
@@ -511,7 +647,7 @@ async function getEditablePostById(postId: string) {
   const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from("posts")
-    .select("id,author_user_id,board:boards!posts_board_id_fkey(code)")
+    .select("id,author_user_id,status,published_at,board:boards!posts_board_id_fkey(code)")
     .eq("id", postId)
     .is("deleted_at", null)
     .maybeSingle<EditablePostRow>();
@@ -520,6 +656,55 @@ async function getEditablePostById(postId: string) {
     throw new Error(`Failed to load post: ${error.message}`);
   }
   return data;
+}
+
+export async function attachImageToPost(input: {
+  postId: string;
+  authorUserId: string;
+  objectPath: string | null;
+  publicUrl: string;
+}): Promise<PostImageItem> {
+  const post = await getEditablePostById(input.postId);
+  if (!post || !post.board) {
+    throw new Error("POST_NOT_FOUND");
+  }
+  if (post.author_user_id !== input.authorUserId) {
+    throw new Error("FORBIDDEN");
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const existingRows = await listEditablePostImageRows(input.postId);
+  if (existingRows.length >= MAX_POST_IMAGE_COUNT) {
+    throw new Error("IMAGE_LIMIT_EXCEEDED");
+  }
+
+  const nextSortOrder = existingRows.length > 0 ? existingRows[existingRows.length - 1].sort_order + 1 : 0;
+  const { data, error } = await supabaseAdmin
+    .from("post_images")
+    .insert({
+      post_id: input.postId,
+      object_path: input.objectPath,
+      public_url: input.publicUrl,
+      sort_order: nextSortOrder,
+    })
+    .select("id,post_id,object_path,public_url,sort_order")
+    .single<PostImageRow>();
+
+  if (error || !data) {
+    throw new Error(`Failed to attach image: ${error?.message ?? "unknown error"}`);
+  }
+
+  const finalImageUrls = [...existingRows.map((row) => row.public_url), data.public_url];
+  const { error: syncError } = await supabaseAdmin
+    .from("posts")
+    .update({ image_urls: finalImageUrls })
+    .eq("id", input.postId);
+
+  if (syncError) {
+    throw new Error(`Failed to sync post images: ${syncError.message}`);
+  }
+
+  return mapPostImage(data);
 }
 
 export async function updatePostById(input: UpdatePostInput) {
@@ -536,15 +721,35 @@ export async function updatePostById(input: UpdatePostInput) {
     throw new Error("Content is required");
   }
 
+  const existingImageRows = await listEditablePostImageRows(input.postId);
+  const requestedImageIds = uniqueImageIds(input.imageIds) ?? existingImageRows.map((image) => image.id);
+  if (requestedImageIds.length > MAX_POST_IMAGE_COUNT) {
+    throw new Error("Image limit exceeded");
+  }
+
+  const imageRowsById = new Map(existingImageRows.map((image) => [image.id, image]));
+  const finalImageRows = requestedImageIds.map((imageId) => {
+    const image = imageRowsById.get(imageId);
+    if (!image) {
+      throw new Error("INVALID_IMAGE_IDS");
+    }
+    return image;
+  });
+  const removedImageRows = existingImageRows.filter((image) => !requestedImageIds.includes(image.id));
+
   const updatePayload: {
     title?: string;
     scripture_text?: string | null;
     content: string;
     image_urls: string[];
     is_anonymous?: boolean;
+    status: "published";
+    published_at: string;
   } = {
     content,
-    image_urls: normalizeImageUrls(input.imageUrls),
+    image_urls: finalImageRows.map((image) => image.public_url),
+    status: "published",
+    published_at: post.published_at ?? new Date().toISOString(),
   };
 
   if (post.board.code === "sermon") {
@@ -574,6 +779,34 @@ export async function updatePostById(input: UpdatePostInput) {
   if (error) {
     throw new Error(`Failed to update post: ${error.message}`);
   }
+
+  const reorderPromises = finalImageRows.map((image, index) =>
+    supabaseAdmin
+      .from("post_images")
+      .update({ sort_order: index })
+      .eq("id", image.id)
+      .eq("post_id", input.postId)
+  );
+  await Promise.all(reorderPromises);
+
+  if (removedImageRows.length > 0) {
+    const removedImageIds = removedImageRows.map((image) => image.id);
+    const { error: deleteImageRowsError } = await supabaseAdmin
+      .from("post_images")
+      .delete()
+      .eq("post_id", input.postId)
+      .in("id", removedImageIds);
+
+    if (deleteImageRowsError) {
+      throw new Error(`Failed to delete removed images: ${deleteImageRowsError.message}`);
+    }
+
+    await removePostImageObjects(
+      removedImageRows
+        .map((image) => image.object_path)
+        .filter((value): value is string => Boolean(value))
+    );
+  }
 }
 
 export async function softDeletePostById(postId: string, authorUserId: string) {
@@ -602,8 +835,12 @@ export async function softDeletePostById(postId: string, authorUserId: string) {
 }
 
 export async function togglePostAmen(postId: string, userId: string) {
-  const supabaseAdmin = getSupabaseAdmin();
+  const visiblePost = await ensureVisiblePost(postId);
+  if (!visiblePost) {
+    throw new Error("POST_NOT_FOUND");
+  }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { data: existingAmen, error: existingAmenError } = await supabaseAdmin
     .from("post_amens")
     .select("post_id")

@@ -16,6 +16,7 @@ import {
   uploadPostImages,
   validatePostImageFile,
   type LocalPostImageDraft,
+  type UploadedPostImage,
 } from "@/features/posts/images.client";
 import { getPostById } from "@/features/posts/server";
 import type { PostDetail } from "@/features/posts/types";
@@ -52,7 +53,13 @@ export default function SermonDetailPage({
   const [title, setTitle] = useState(post?.title ?? "");
   const [scriptureText, setScriptureText] = useState(post?.scriptureText ?? "");
   const [content, setContent] = useState(post?.content ?? "");
-  const [imageUrls, setImageUrls] = useState(post?.imageUrls ?? []);
+  const [uploadedImages, setUploadedImages] = useState<UploadedPostImage[]>(
+    (post?.images ?? []).map((image) => ({
+      id: image.id,
+      publicUrl: image.publicUrl,
+      sortOrder: image.sortOrder,
+    }))
+  );
   const [localImages, setLocalImages] = useState<LocalPostImageDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -72,7 +79,7 @@ export default function SermonDetailPage({
 
   function onAddFiles(files: File[]) {
     const nextDrafts: LocalPostImageDraft[] = [];
-    const totalCount = imageUrls.length + localImages.length;
+    const totalCount = uploadedImages.length + localImages.length;
 
     for (const file of files) {
       if (totalCount + nextDrafts.length >= POST_IMAGE_MAX_COUNT) {
@@ -137,7 +144,14 @@ export default function SermonDetailPage({
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      const uploadedImageUrls = await uploadPostImages(localImages.map((image) => image.file));
+      let nextUploadedImages = uploadedImages;
+      if (localImages.length > 0) {
+        const uploaded = await uploadPostImages(
+          postId,
+          localImages.map((image) => image.file)
+        );
+        nextUploadedImages = [...uploadedImages, ...uploaded];
+      }
       const response = await fetch(`/api/posts/${postId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -145,7 +159,7 @@ export default function SermonDetailPage({
           title,
           scriptureText,
           content,
-          imageUrls: [...imageUrls, ...uploadedImageUrls],
+          imageIds: nextUploadedImages.map((image) => image.id),
         }),
       });
       const payload = (await response.json()) as UpdatePostResponse;
@@ -153,6 +167,11 @@ export default function SermonDetailPage({
         setSubmitError(payload.ok ? "수정 중 오류가 발생했습니다." : payload.error);
         return;
       }
+      setUploadedImages(nextUploadedImages);
+      setLocalImages((prev) => {
+        for (const image of prev) revokeLocalPostImageDraft(image);
+        return [];
+      });
       setIsEditing(false);
       await router.replace(router.asPath);
     } catch (e) {
@@ -220,13 +239,13 @@ export default function SermonDetailPage({
                 className="mb-4 min-h-[220px] w-full resize-none rounded-xl border border-surface bg-white px-4 py-4 text-[15px] text-textMain"
               />
               <PostImagePicker
-                existingImageUrls={imageUrls}
+                existingImages={uploadedImages}
                 localImages={localImages}
                 maxCount={POST_IMAGE_MAX_COUNT}
                 disabled={isSubmitting}
                 onAddFiles={onAddFiles}
-                onRemoveExisting={(index) =>
-                  setImageUrls((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
+                onRemoveExisting={(imageId) =>
+                  setUploadedImages((prev) => prev.filter((image) => image.id !== imageId))
                 }
                 onRemoveLocal={onRemoveLocalImage}
               />
@@ -260,7 +279,13 @@ export default function SermonDetailPage({
                         setTitle(post.title);
                         setScriptureText(post.scriptureText ?? "");
                         setContent(post.content);
-                        setImageUrls(post.imageUrls);
+                        setUploadedImages(
+                          post.images.map((image) => ({
+                            id: image.id,
+                            publicUrl: image.publicUrl,
+                            sortOrder: image.sortOrder,
+                          }))
+                        );
                         setSubmitError(null);
                         setIsEditing(false);
                         setLocalImages((prev) => {

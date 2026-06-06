@@ -13,6 +13,7 @@ import {
   uploadPostImages,
   validatePostImageFile,
   type LocalPostImageDraft,
+  type UploadedPostImage,
 } from "@/features/posts/images.client";
 import { authOptions } from "@/lib/auth/options";
 
@@ -24,6 +25,8 @@ export default function NewPrayerPage() {
   const router = useRouter();
   const [content, setContent] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<UploadedPostImage[]>([]);
   const [localImages, setLocalImages] = useState<LocalPostImageDraft[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export default function NewPrayerPage() {
 
   function onAddFiles(files: File[]) {
     const nextDrafts: LocalPostImageDraft[] = [];
-    const totalCount = localImages.length;
+    const totalCount = uploadedImages.length + localImages.length;
 
     for (const file of files) {
       if (totalCount + nextDrafts.length >= POST_IMAGE_MAX_COUNT) {
@@ -74,6 +77,23 @@ export default function NewPrayerPage() {
     });
   }
 
+  async function ensureDraftId() {
+    if (draftId) return draftId;
+
+    const response = await fetch("/api/posts/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ boardType: "prayer" }),
+    });
+    const payload = (await response.json()) as CreatePostResponse;
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.ok ? "초안 생성 중 오류가 발생했습니다." : payload.error);
+    }
+
+    setDraftId(payload.data.id);
+    return payload.data.id;
+  }
+
   async function onSubmit() {
     if (!content.trim()) {
       setError("본문을 입력해주세요.");
@@ -84,14 +104,23 @@ export default function NewPrayerPage() {
     setError(null);
 
     try {
-      const uploadedImageUrls = await uploadPostImages(localImages.map((image) => image.file));
-      const response = await fetch("/api/posts", {
-        method: "POST",
+      const nextDraftId = await ensureDraftId();
+      let nextUploadedImages = uploadedImages;
+
+      if (localImages.length > 0) {
+        const uploaded = await uploadPostImages(
+          nextDraftId,
+          localImages.map((image) => image.file)
+        );
+        nextUploadedImages = [...uploadedImages, ...uploaded];
+      }
+
+      const response = await fetch(`/api/posts/${nextDraftId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          boardType: "prayer",
           content,
-          imageUrls: uploadedImageUrls,
+          imageIds: nextUploadedImages.map((image) => image.id),
           isAnonymous,
         }),
       });
@@ -102,6 +131,11 @@ export default function NewPrayerPage() {
         return;
       }
 
+      setUploadedImages(nextUploadedImages);
+      setLocalImages((prev) => {
+        for (const image of prev) revokeLocalPostImageDraft(image);
+        return [];
+      });
       await router.push(`/prayers/${payload.data.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류가 발생했습니다.");
@@ -151,10 +185,14 @@ export default function NewPrayerPage() {
 
           <div className="mt-4">
             <PostImagePicker
+              existingImages={uploadedImages}
               localImages={localImages}
               maxCount={POST_IMAGE_MAX_COUNT}
               disabled={isSubmitting}
               onAddFiles={onAddFiles}
+              onRemoveExisting={(imageId) =>
+                setUploadedImages((prev) => prev.filter((image) => image.id !== imageId))
+              }
               onRemoveLocal={onRemoveLocalImage}
             />
           </div>

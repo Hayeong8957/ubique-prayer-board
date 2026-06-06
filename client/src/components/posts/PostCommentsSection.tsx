@@ -312,7 +312,7 @@ export function PostCommentsSection({
 
   return (
     <>
-      <Card className="mt-3 p-4">
+      <Card id="comments" className="mt-3 scroll-mt-24 p-4">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4 text-primary" />
