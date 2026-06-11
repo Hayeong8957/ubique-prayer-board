@@ -103,7 +103,8 @@ end $$;
 insert into public.boards (code, name, description, sort_order)
 values
   ('prayer', '기도 게시판', '기도제목을 나누는 게시판', 1),
-  ('sermon', '설교 게시판', '설교 요약 및 나눔 게시판', 2)
+  ('sermon', '설교 게시판', '설교 요약 및 나눔 게시판', 2),
+  ('horeb', '호렙산 기도회 게시판', '호렙산 기도회 말씀을 나누는 게시판', 3)
 on conflict (code) do nothing;
 
 -- =========================================================

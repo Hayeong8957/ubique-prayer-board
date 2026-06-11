@@ -9,7 +9,7 @@ type DraftPostApiResponse =
   | { ok: false; error: string };
 
 function parseBoardCode(value: unknown): BoardCode | null {
-  if (value === "prayer" || value === "sermon") return value;
+  if (value === "prayer" || value === "sermon" || value === "horeb") return value;
   return null;
 }
 

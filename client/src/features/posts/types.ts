@@ -1,4 +1,4 @@
-export type BoardCode = "prayer" | "sermon";
+export type BoardCode = "prayer" | "sermon" | "horeb";
 export type PostStatus = "draft" | "published";
 
 export interface PostImageItem {
