@@ -74,6 +74,10 @@ type EditableCommentRow = {
 
 const MAX_POST_IMAGE_COUNT = 4;
 
+function isMessageBoard(boardCode: BoardCode) {
+  return boardCode === "sermon" || boardCode === "horeb";
+}
+
 function createTitleFromContent(content: string) {
   const compact = content.replace(/\s+/g, " ").trim();
   if (!compact) return "기도제목";
@@ -188,7 +192,7 @@ export async function listPostsByBoardCodePaginated(
   const to = from + safePageSize;
 
   const listSelectColumns =
-    boardCode === "sermon"
+    isMessageBoard(boardCode)
       ? "id,board_id,author_user_id,title,scripture_text,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
       : "id,board_id,author_user_id,title,scripture_text,content,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
@@ -261,7 +265,7 @@ export async function listPostsByAuthorAndBoardCode(
 
   const supabaseAdmin = getSupabaseAdmin();
   const listSelectColumns =
-    boardCode === "sermon"
+    isMessageBoard(boardCode)
       ? "id,board_id,author_user_id,title,scripture_text,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)"
       : "id,board_id,author_user_id,title,scripture_text,content,image_urls,status,published_at,is_anonymous,is_pinned,comment_count,amen_count,created_at,author:users!posts_author_user_id_fkey(name)";
 
@@ -574,7 +578,7 @@ export async function createDraftPost(input: {
     .from("posts")
     .insert({
       board_id: board.id,
-      title: input.boardCode === "sermon" ? "" : "기도제목",
+      title: isMessageBoard(input.boardCode) ? "" : "기도제목",
       scripture_text: null,
       content: "",
       image_urls: [],
@@ -608,11 +612,11 @@ export async function createPost(input: CreatePostInput): Promise<string> {
   const scriptureText = (input.scriptureText ?? "").trim();
   const titleInput = (input.title ?? "").trim();
   const title =
-    input.boardCode === "sermon"
+    isMessageBoard(input.boardCode)
       ? titleInput
       : titleInput || createTitleFromContent(content);
 
-  if (input.boardCode === "sermon") {
+  if (isMessageBoard(input.boardCode)) {
     if (!title) throw new Error("Title is required");
     if (!scriptureText) throw new Error("Scripture text is required");
   }
@@ -809,7 +813,7 @@ export async function updatePostById(input: UpdatePostInput) {
     published_at: post.published_at ?? new Date().toISOString(),
   };
 
-  if (post.board.code === "sermon") {
+  if (post.board.code === "sermon" || post.board.code === "horeb") {
     const title = (input.title ?? "").trim();
     const scriptureText = (input.scriptureText ?? "").trim();
     if (!title) throw new Error("Title is required");

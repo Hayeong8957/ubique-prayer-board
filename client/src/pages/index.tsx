@@ -31,12 +31,14 @@ interface FeedState {
 }
 
 const BOARD_TABS: Array<{ code: BoardCode; label: string }> = [
-  { code: "prayer", label: "기도제목" },
+  { code: "prayer", label: "🙏기도제목🙏" },
+  { code: "horeb", label: "✨호렙산 기도회✨" },
   { code: "sermon", label: "주일 말씀" },
 ];
 
 function parseBoardFromQuery(value: string | string[] | undefined): BoardCode {
   if (value === "sermon") return "sermon";
+  if (value === "horeb") return "horeb";
   return "prayer";
 }
 
@@ -69,11 +71,48 @@ function displayAuthor(post: PostListItem) {
 }
 
 function getDetailPath(boardCode: BoardCode, postId: string) {
-  return boardCode === "prayer" ? `/prayers/${postId}` : `/sermons/${postId}`;
+  if (boardCode === "prayer") return `/prayers/${postId}`;
+  if (boardCode === "horeb") return `/horeb/${postId}`;
+  return `/sermons/${postId}`;
 }
 
 function getCommentsPath(boardCode: BoardCode, postId: string) {
   return `${getDetailPath(boardCode, postId)}#comments`;
+}
+
+function getBoardDisplay(boardCode: BoardCode) {
+  switch (boardCode) {
+    case "prayer":
+      return {
+        createTitle: "새 기도제목 작성",
+        createDescription: "마음을 나누고 함께 기도받아 보세요.",
+        createButton: "기도제목 작성하기",
+        pinnedLabel: "기도제목",
+        loadingLabel: "기도제목",
+        emptyLabel: "기도제목",
+        endLabel: "기도제목",
+      };
+    case "horeb":
+      return {
+        createTitle: "새 호렙산 기도회 말씀 작성",
+        createDescription: "호렙산 기도회 말씀 정리를 함께 나눠보세요.",
+        createButton: "호렙산 기도회 말씀 작성하기",
+        pinnedLabel: "호렙산 기도회 말씀",
+        loadingLabel: "호렙산 기도회 말씀",
+        emptyLabel: "호렙산 기도회 말씀",
+        endLabel: "호렙산 기도회 말씀",
+      };
+    default:
+      return {
+        createTitle: "새 주일 말씀 작성",
+        createDescription: "주일 말씀 정리를 함께 나눠보세요.",
+        createButton: "주일 말씀 작성하기",
+        pinnedLabel: "주일 말씀",
+        loadingLabel: "주일 말씀",
+        emptyLabel: "주일 말씀",
+        endLabel: "주일 말씀",
+      };
+  }
 }
 
 export default function Home() {
@@ -85,6 +124,7 @@ export default function Home() {
   const [feedByBoard, setFeedByBoard] = useState<Record<BoardCode, FeedState>>({
     prayer: createInitialFeedState(),
     sermon: createInitialFeedState(),
+    horeb: createInitialFeedState(),
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -97,6 +137,7 @@ export default function Home() {
   const loadedPagesRef = useRef<Record<BoardCode, Set<number>>>({
     prayer: new Set<number>(),
     sermon: new Set<number>(),
+    horeb: new Set<number>(),
   });
 
   const currentFeed = feedByBoard[selectedBoard];
@@ -110,6 +151,7 @@ export default function Home() {
   const pinnedPost = posts.find((post) => post.isPinned);
   const normalPosts = posts.filter((post) => !post.isPinned);
   const isPrayerBoard = selectedBoard === "prayer";
+  const boardDisplay = getBoardDisplay(selectedBoard);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -236,8 +278,16 @@ export default function Home() {
   }, [posts, router, selectedBoard]);
 
   function onClickCreatePrayer() {
-    if (status === "authenticated") {
-      router.push(isPrayerBoard ? "/prayers/new" : "/sermons/new");
+      if (status === "authenticated") {
+      if (selectedBoard === "prayer") {
+        router.push("/prayers/new");
+        return;
+      }
+      if (selectedBoard === "horeb") {
+        router.push("/horeb/new");
+        return;
+      }
+      router.push("/sermons/new");
       return;
     }
     setIsLoginModalOpen(true);
@@ -439,19 +489,17 @@ export default function Home() {
             <Card className="mb-3 p-4">
 
               <p className="mb-1 text-sm font-semibold text-textMain">
-                {isPrayerBoard ? "새 기도제목 작성" : "새 주일 말씀 작성"}
+                {boardDisplay.createTitle}
               </p>
               <p className="mb-3 text-sm text-textSub">
-                {isPrayerBoard
-                  ? "마음을 나누고 함께 기도받아 보세요."
-                  : "주일 말씀 정리를 함께 나눠보세요."}
+                {boardDisplay.createDescription}
               </p>
               <button
                 type="button"
                 onClick={onClickCreatePrayer}
                 className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-primary bg-primary px-5 text-sm font-semibold text-white transition hover:brightness-95"
               >
-                {isPrayerBoard ? "기도제목 작성하기" : "주일 말씀 작성하기"}
+                {boardDisplay.createButton}
               </button>
             </Card>
           </div>
@@ -461,7 +509,7 @@ export default function Home() {
           {pinnedPost ? (
             <Card className="mb-3 bg-primary/10 p-4">
               <p className="text-sm font-semibold text-primary">
-                📌 고정 {isPrayerBoard ? "기도제목" : "주일 말씀"}
+                📌 고정 {boardDisplay.pinnedLabel}
               </p>
               <p className="mt-1 text-sm font-semibold text-textMain">{pinnedPost.title}</p>
               {!isPrayerBoard && pinnedPost.scriptureText ? (
@@ -481,7 +529,7 @@ export default function Home() {
 
           {!error && isInitialLoading ? (
             <Card className="mb-3 p-5 text-center text-sm text-textSub">
-              {isPrayerBoard ? "기도제목" : "주일 말씀"}을 불러오는 중...
+              {boardDisplay.loadingLabel}을 불러오는 중...
             </Card>
           ) : null}
 
@@ -559,7 +607,7 @@ export default function Home() {
 
           {!error && !isInitialLoading && normalPosts.length === 0 && !pinnedPost ? (
             <Card className="mb-3 p-5 text-center text-sm text-textSub">
-              아직 등록된 {isPrayerBoard ? "기도제목" : "주일 말씀"}이 없습니다.
+              아직 등록된 {boardDisplay.emptyLabel}이 없습니다.
             </Card>
           ) : null}
 
@@ -569,7 +617,7 @@ export default function Home() {
           ) : null}
           {!hasNextPage && posts.length > 0 ? (
             <p className="mb-3 text-center text-xs text-textSub">
-              마지막 {isPrayerBoard ? "기도제목" : "주일 말씀"}까지 확인했어요.
+              마지막 {boardDisplay.endLabel}까지 확인했어요.
             </p>
           ) : null}
         </section>

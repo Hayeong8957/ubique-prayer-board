@@ -11,6 +11,7 @@ import type { PostListItem } from "@/features/posts/types";
 interface ProfilePageProps {
   prayerPosts: PostListItem[];
   sermonPosts: PostListItem[];
+  horebPosts: PostListItem[];
   error?: string;
 }
 
@@ -46,12 +47,14 @@ function groupByDate(posts: PostListItem[]) {
   }, {});
 }
 
-export default function ProfilePage({ prayerPosts, sermonPosts, error }: ProfilePageProps) {
+export default function ProfilePage({ prayerPosts, sermonPosts, horebPosts, error }: ProfilePageProps) {
   const router = useRouter();
   const groupedPrayers = groupByDate(prayerPosts);
   const groupedSermons = groupByDate(sermonPosts);
+  const groupedHoreb = groupByDate(horebPosts);
   const prayerGroupKeys = Object.keys(groupedPrayers).sort((a, b) => (a < b ? 1 : -1));
   const sermonGroupKeys = Object.keys(groupedSermons).sort((a, b) => (a < b ? 1 : -1));
+  const horebGroupKeys = Object.keys(groupedHoreb).sort((a, b) => (a < b ? 1 : -1));
 
   function prefetchPath(path: string) {
     router.prefetch(path).catch(() => {
@@ -70,7 +73,7 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
         
         <div>
           <h1 className="mb-1 text-lg font-bold text-textMain">내 프로필</h1>
-          <p className="mb-4 text-sm text-textSub">내가 작성한 기도제목과 주일 말씀</p>
+          <p className="mb-4 text-sm text-textSub">내가 작성한 기도제목과 주일 말씀, 호렙산 기도회 말씀</p>
         </div>
 
         {error ? (
@@ -79,7 +82,7 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
           </Card>
         ) : null}
 
-        {!error && prayerPosts.length === 0 && sermonPosts.length === 0 ? (
+        {!error && prayerPosts.length === 0 && sermonPosts.length === 0 && horebPosts.length === 0 ? (
           <Card className="mb-3 p-4">
             <p className="text-sm text-textSub">아직 작성한 글이 없습니다.</p>
           </Card>
@@ -152,6 +155,40 @@ export default function ProfilePage({ prayerPosts, sermonPosts, error }: Profile
                 </div>
               )}
             </Card>
+
+            <Card className="p-4">
+              <h2 className="mb-3 text-sm font-semibold text-textMain">내 호렙산 기도회 말씀</h2>
+              {horebGroupKeys.length === 0 ? (
+                <p className="text-sm text-textSub">작성한 호렙산 기도회 말씀이 없습니다.</p>
+              ) : (
+                <div className="space-y-4">
+                  {horebGroupKeys.map((key) => (
+                    <section key={`horeb-${key}`}>
+                      <h3 className="mb-2 text-xs font-semibold text-textSub">{dateLabel(key)}</h3>
+                      <div className="space-y-2">
+                        {groupedHoreb[key].map((post) => (
+                          <Link
+                            key={post.id}
+                            href={`/horeb/${post.id}`}
+                            onMouseEnter={() => prefetchPath(`/horeb/${post.id}`)}
+                            onTouchStart={() => prefetchPath(`/horeb/${post.id}`)}
+                            className="block rounded-xl border border-surface bg-surface/40 p-3 transition hover:bg-surface"
+                          >
+                            <p className="mb-1 text-sm font-semibold text-textMain">{post.title}</p>
+                            {post.scriptureText ? (
+                              <p className="line-clamp-1 text-sm text-textSub">{post.scriptureText}</p>
+                            ) : null}
+                            <p className="mt-2 text-xs text-textSub">
+                              {timeLabel(post.createdAt)} · 댓글 {post.commentCount}
+                            </p>
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
         ) : null}
       </main>
@@ -172,13 +209,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   }
 
   try {
-    const [prayerPosts, sermonPosts] = await Promise.all([
+    const [prayerPosts, sermonPosts, horebPosts] = await Promise.all([
       listPostsByAuthorAndBoardCode(session.user.id, "prayer"),
       listPostsByAuthorAndBoardCode(session.user.id, "sermon"),
+      listPostsByAuthorAndBoardCode(session.user.id, "horeb"),
     ]);
-    return { props: { prayerPosts, sermonPosts } };
+    return { props: { prayerPosts, sermonPosts, horebPosts } };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return { props: { prayerPosts: [], sermonPosts: [], error: message } };
+    return { props: { prayerPosts: [], sermonPosts: [], horebPosts: [], error: message } };
   }
 };

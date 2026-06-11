@@ -15,6 +15,7 @@ type PostsApiResponse =
 
 function parseBoardCode(value: string | string[] | undefined): BoardCode {
   if (value === "sermon") return "sermon";
+  if (value === "horeb") return "horeb";
   return "prayer";
 }
 
