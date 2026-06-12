@@ -31,8 +31,8 @@ interface FeedState {
 }
 
 const BOARD_TABS: Array<{ code: BoardCode; label: string }> = [
-  { code: "prayer", label: "🙏기도제목🙏" },
-  { code: "horeb", label: "✨호렙산 기도회✨" },
+  { code: "prayer", label: "기도제목" },
+  { code: "horeb", label: "✨호렙산 말씀✨" },
   { code: "sermon", label: "주일 말씀" },
 ];
 
@@ -475,7 +475,7 @@ export default function Home() {
                     { shallow: true, scroll: false }
                   );
                 }}
-                className={`h-9 rounded-xl px-4 text-sm font-semibold transition ${
+                className={`h-9 rounded-xl px-3 text-sm font-semibold transition ${
                   selectedBoard === tab.code
                     ? "border border-primary bg-primary/10 text-primary"
                     : "border border-gray-300 bg-white text-textSub hover:bg-surface"
